@@ -1,0 +1,16 @@
+__pycache__
+.env
+.history
+.hypothesis/
+build/
+reports/
+dump_sources/
+node_modules
+tmp/
+
+**.pyc
+
+.DS_Store
+.vscode/launch.json
+
+etherisc*.tgz
