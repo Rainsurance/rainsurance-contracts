@@ -164,7 +164,7 @@ contract RainProduct is
         pure
         returns(bytes32 riskId)
     {
-        riskId = keccak256(abi.encode(placeId, startDate, endDate)); // TODO: will encode work uint256?
+        riskId = keccak256(abi.encode(placeId, startDate, endDate));
     }
 
     function applyForPolicy(
@@ -291,7 +291,7 @@ contract RainProduct is
             risk.endDate,
             risk.lat,
             risk.long
-        ); //TODO: abi.encode funciona com uint256 e int256?
+        );
 
         requestId = _request(
                 processId, 
