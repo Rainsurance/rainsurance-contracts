@@ -7,8 +7,7 @@ import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 
 import "@etherisc/gif-interface/contracts/components/Product.sol";
-
-import "../gif/shared/TransferHelper.sol";
+import "@etherisc/gif-contracts/contracts/shared/TransferHelper.sol";
 
 contract RainProduct is 
     Product, 
