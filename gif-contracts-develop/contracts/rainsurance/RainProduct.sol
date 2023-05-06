@@ -4,14 +4,11 @@ pragma solidity 0.8.2;
 import "@openzeppelin/contracts/access/AccessControl.sol";
 import "@openzeppelin/contracts/proxy/utils/Initializable.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 
 import "@etherisc/gif-interface/contracts/components/Product.sol";
 
 import "../gif/shared/TransferHelper.sol";
-import "../gif/modules/PolicyController.sol";
-import "../gif/modules/AccessController.sol";
 
 contract RainProduct is 
     Product, 
