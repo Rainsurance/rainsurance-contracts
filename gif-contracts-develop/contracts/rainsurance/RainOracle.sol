@@ -3,6 +3,7 @@ pragma solidity 0.8.2;
 
 import "./strings.sol";
 
+import "@openzeppelin/contracts/utils/Strings.sol";
 import "@chainlink/contracts/src/v0.8/ChainlinkClient.sol";
 import "@etherisc/gif-interface/contracts/components/Oracle.sol";
 
@@ -11,19 +12,19 @@ contract RainOracle is
 {
     using strings for bytes32;
     using Chainlink for Chainlink.Request;
-
+    
     mapping(bytes32 /* Chainlink request ID */ => uint256 /* GIF request ID */) public gifRequests;
-    bytes32 public jobId;
-    uint256 public payment;
+    bytes32 private jobId;
+    uint256 private payment;
 
     event LogRainRequest(uint256 requestId, bytes32 chainlinkRequestId);
     
     event LogRainFulfill(
         uint256 requestId, 
         bytes32 chainlinkRequestId, 
-        bytes32 projectId,
-        bytes32 uaiId,
-        bytes32 cropId,
+        bytes32 placeId, 
+        uint256 startDate, 
+        uint256 endDate, 
         uint256 aaay
     );
 
@@ -71,14 +72,20 @@ contract RainOracle is
         );
 
         (
-            bytes32 projectId, 
-            bytes32 uaiId, 
-            bytes32 cropId
-        ) = abi.decode(input, (bytes32, bytes32, bytes32));
+            uint256 startDate, 
+            uint256 endDate, 
+            int256 lat,
+            int256 long
+        ) = abi.decode(input, (uint256, uint256, int256, int256));
 
-        request_.add("projectId", projectId.toB32String());
-        request_.add("uaiId", uaiId.toB32String());
-        request_.add("cropId", cropId.toB32String());
+        request_.add("startDate", Strings.toString(startDate));
+        request_.add("endDate", Strings.toString(endDate));
+        string memory latSign = lat >= 0 ? "" : "-";
+        string memory latString = string(abi.encodePacked(latSign, Strings.toString(abs(lat)))); 
+        request_.add("lat", latString);
+        string memory longSign = lat >= 0 ? "" : "-";
+        string memory longString = string(abi.encodePacked(longSign, Strings.toString(abs(long)))); 
+        request_.add("long", longString);
 
         bytes32 chainlinkRequestId = sendChainlinkRequest(request_, payment);
 
@@ -88,19 +95,19 @@ contract RainOracle is
 
     function fulfill(
         bytes32 chainlinkRequestId, 
-        bytes32 projectId, 
-        bytes32 uaiId, 
-        bytes32 cropId, 
+        bytes32 placeId, 
+        uint256 startDate, 
+        uint256 endDate, 
         uint256 aaay
     )
         public recordChainlinkFulfillment(chainlinkRequestId) 
     {
         uint256 gifRequest = gifRequests[chainlinkRequestId];
-        bytes memory data =  abi.encode(projectId, uaiId, cropId, aaay);        
+        bytes memory data =  abi.encode(placeId, startDate, endDate, aaay);        
         _respond(gifRequest, data);
 
         delete gifRequests[chainlinkRequestId];
-        emit LogRainFulfill(gifRequest, chainlinkRequestId, projectId, uaiId, cropId, aaay);
+        emit LogRainFulfill(gifRequest, chainlinkRequestId, placeId, startDate, endDate, aaay);
     }
 
     function cancel(uint256 requestId)
@@ -114,9 +121,9 @@ contract RainOracle is
     // only used for testing of chainlink operator
     function encodeFulfillParameters(
         bytes32 chainlinkRequestId, 
-        bytes32 projectId, 
-        bytes32 uaiId, 
-        bytes32 cropId, 
+        bytes32 placeId, 
+        uint256 startDate, 
+        uint256 endDate, 
         uint256 aaay
     ) 
         external
@@ -125,11 +132,16 @@ contract RainOracle is
     {
         return abi.encode(
             chainlinkRequestId, 
-            projectId, 
-            uaiId, 
-            cropId, 
+            placeId, 
+            startDate, 
+            endDate, 
             aaay
         );
+    }
+
+
+    function abs(int256 x) private pure returns (uint256) {
+        return x >= 0 ? uint256(x) : uint256(-x);
     }
 
     function getChainlinkJobId() external view returns(bytes32 chainlinkJobId) {

@@ -1,6 +1,7 @@
 from re import A
 import brownie
 import pytest
+import time
 
 from brownie.network.account import Account
 
@@ -36,31 +37,33 @@ def test_risk_creation_happy_case(
 ):
     product = gifRainProduct.getContract()
     multiplier = product.getPercentageMultiplier()
+    coordMultiplier = product.getCoordinatesMultiplier()
 
-    projectId = s2b32('2022.kenya.wfp.rain')
-    uaiId = s2b32('1234')
-    cropId = s2b32('mixed')
+    startDate = time.time() + 100
+    endDate = time.time() + 1000
+    placeId = s2b32('10001.saopaulo') # mm 
+    lat = -23.550620
+    long = -46.634370
+    trigger = 0.1 # %
+    exit = 1.0 # %
+    aph = 5.0 # mm
 
-    trigger = 0.75
-    exit = 0.1
-    tsi = 0.9
-    aph = 1.9
-
-    riskId = create_risk(product, insurer, multiplier, projectId, uaiId, cropId, trigger, exit, tsi, aph)
+    riskId = create_risk(product, insurer, startDate, endDate, placeId, lat, long, trigger, exit, aph)
     risk = product.getRisk(riskId)
 
     assert risk[0] == riskId
-    assert risk[1] == projectId
-    assert risk[2] == uaiId
-    assert risk[3] == cropId
-    assert risk[4] == multiplier * trigger
-    assert risk[5] == multiplier * exit
-    assert risk[6] == multiplier * tsi
-    assert risk[7] == multiplier * aph
+    assert risk[1] == startDate
+    assert risk[2] == endDate
+    assert risk[3] == placeId
+    assert risk[4] == coordMultiplier * lat
+    assert risk[5] == coordMultiplier * long
+    assert risk[6] == multiplier * trigger
+    assert risk[7] == multiplier * exit
+    assert risk[8] == aph
 
     # attempt to modify risk
-    with brownie.reverts('ERROR:AYI-001:RISK_ALREADY_EXISTS'):
-        create_risk(product, insurer, multiplier, projectId, uaiId, cropId, trigger, exit, tsi, aph * 0.9)
+    with brownie.reverts('ERROR:RAIN-001:RISK_ALREADY_EXISTS'):
+        create_risk(product, insurer, startDate, endDate, placeId, lat, long, trigger, exit, aph * 0.9)
 
 
 def test_risk_creation_validation(
@@ -71,88 +74,72 @@ def test_risk_creation_validation(
     product = gifRainProduct.getContract()
     multiplier = product.getPercentageMultiplier()
 
-    projectId = s2b32('2022.kenya.wfp.rain')
-    uaiId = s2b32('1234')
-    cropId = s2b32('mixed')
-
-    # valid parameters
-    trigger = 0.75
-    exit = 0.1
-    tsi = 0.9
-    aph = 1.9
+    startDate = time.time() + 100
+    endDate = time.time() + 1000
+    lat = -23.550620
+    long = -46.634370
+    trigger = 0.2 # %
+    exit = 0.75 # %
+    aph = 5.0 # mm
 
     # check trigger validation: trigger <= 1.0
-    valid_trigger = 1.0
+    valid_trigger = 0.2
     bad_trigger = 1.1
 
-    create_risk(product, insurer, multiplier, s2b32('1'), uaiId, cropId, valid_trigger, exit, tsi, aph)
+    create_risk(product, insurer, startDate, endDate, s2b32('1'), lat, long, valid_trigger, exit, aph)
 
-    with brownie.reverts('ERROR:AYI-040:RISK_TRIGGER_TOO_LARGE'):
-        create_risk(product, insurer, multiplier, projectId, uaiId, cropId, bad_trigger, exit, tsi, aph)
+    with brownie.reverts('ERROR:RAIN-041:RISK_TRIGGER_TOO_LARGE'):
+        create_risk(product, insurer, startDate, endDate, s2b32('2'), lat, long, bad_trigger, exit, aph)
 
-    # check trigger validation: trigger > exit
+    # check trigger validation: trigger < exit
     bad_trigger1 = exit
-    bad_trigger2 = exit - 0.1
+    bad_trigger2 = exit + 0.1
 
-    with brownie.reverts('ERROR:AYI-041:RISK_TRIGGER_NOT_LARGER_THAN_EXIT'):
-        create_risk(product, insurer, multiplier, projectId, uaiId, cropId, bad_trigger1, exit, tsi, aph)
+    with brownie.reverts('ERROR:RAIN-042:RISK_EXIT_NOT_LARGER_THAN_TRIGGER'):
+        create_risk(product, insurer, startDate, endDate, s2b32('3'), lat, long, bad_trigger1, exit, aph)
 
-    with brownie.reverts('ERROR:AYI-041:RISK_TRIGGER_NOT_LARGER_THAN_EXIT'):
-        create_risk(product, insurer, multiplier, projectId, uaiId, cropId, bad_trigger2, exit, tsi, aph)
+    with brownie.reverts('ERROR:RAIN-042:RISK_EXIT_NOT_LARGER_THAN_TRIGGER'):
+        create_risk(product, insurer, startDate, endDate, s2b32('4'), lat, long, bad_trigger2, exit, aph)
 
-    # check exit validation: 0 <= exit <= 0.2
-    valid_exit = 0
-    bad_exit = 0.2 + 0.001
+    # check exit validation
+    valid_exit = exit
+    bad_exit1 = trigger - 0.1
+    bad_exit2 = 0
 
-    create_risk(product, insurer, multiplier, s2b32('2'), uaiId, cropId, trigger, valid_exit, tsi, aph)
+    create_risk(product, insurer, startDate, endDate, s2b32('5'), lat, long, trigger, valid_exit, aph)
 
-    with brownie.reverts('ERROR:AYI-042:RISK_EXIT_TOO_LARGE'):
-        create_risk(product, insurer, multiplier, projectId, uaiId, cropId, trigger, bad_exit, tsi, aph)
+    with brownie.reverts('ERROR:RAIN-042:RISK_EXIT_NOT_LARGER_THAN_TRIGGER'):
+        create_risk(product, insurer, startDate, endDate, s2b32('6'), lat, long, trigger, bad_exit1, aph)
 
-    # check tsi validation: 0.5 <= tsi
-    valid_tsi = 0.5
-    bad_tsi = 0.49
+    with brownie.reverts('ERROR:RAIN-042:RISK_EXIT_NOT_LARGER_THAN_TRIGGER'):
+        create_risk(product, insurer, startDate, endDate, s2b32('7'), lat, long, trigger, bad_exit2, aph)
 
-    create_risk(product, insurer, multiplier, s2b32('3'), uaiId, cropId, trigger, exit, valid_tsi, aph)
+    # check aph validation
+    bad_aph = 0
 
-    with brownie.reverts('ERROR:AYI-043:RISK_TSI_TOO_SMALL'):
-        create_risk(product, insurer, multiplier, projectId, uaiId, cropId, trigger, exit, bad_tsi, aph)
+    with brownie.reverts('ERROR:RAIN-043:RISK_APH_ZERO_INVALID'):
+        create_risk(product, insurer, startDate, endDate, s2b32('8'), lat, long, trigger, exit, bad_aph)
 
-    # check tsi validation: tsi <= 1.0
-    exit_modified = 0.0
-    valid_tsi = 1.0
-    bad_tsi = 1.1
+    # check dates validation
+    bad_startDate1 = endDate + 500
+    bad_startDate2 = time.time() - 500
 
-    create_risk(product, insurer, multiplier, s2b32('4'), uaiId, cropId, trigger, exit_modified, valid_tsi, aph)
+    bad_endDate1 = time.time() - 500
+    bad_endDate2 = startDate - 500
 
-    with brownie.reverts('ERROR:AYI-044:RISK_TSI_TOO_LARGE'):
-        create_risk(product, insurer, multiplier, projectId, uaiId, cropId, trigger, exit_modified, bad_tsi, aph)
+    create_risk(product, insurer, startDate, endDate, s2b32('9'), lat, long, trigger, exit, aph)
 
-    # check tsi validation: tsi + exit <= 1.0
-    exit_modified = 0.15
-    valid_tsi = 0.85
-    bad_tsi = 0.9
+    with brownie.reverts('ERROR:RAIN-045:RISK_END_DATE_INVALID'):
+        create_risk(product, insurer, bad_startDate1, endDate, s2b32('10'), lat, long, trigger, exit, aph)
 
-    create_risk(product, insurer, multiplier, s2b32('5'), uaiId, cropId, trigger, exit_modified, valid_tsi, aph)
+    with brownie.reverts('ERROR:RAIN-044:RISK_START_DATE_INVALID'):
+        create_risk(product, insurer, bad_startDate2, endDate, s2b32('11'), lat, long, trigger, exit, aph)
 
-    with brownie.reverts('ERROR:AYI-045:RISK_TSI_EXIT_SUM_TOO_LARGE'):
-        create_risk(product, insurer, multiplier, projectId, uaiId, cropId, trigger, exit_modified, bad_tsi, aph)
+    with brownie.reverts('ERROR:RAIN-045:RISK_END_DATE_INVALID'):
+        create_risk(product, insurer, startDate, bad_endDate1, s2b32('12'), lat, long, trigger, exit, aph)
 
-    # check tsi validation: tsi + exit <= 1.0
-    valid_aph_1 = 0.0001
-    valid_aph_2 = 15.0
-    bad_aph_1 = 0.0
-    bad_aph_2 = 15.1
-
-    create_risk(product, insurer, multiplier, s2b32('6'), uaiId, cropId, trigger, exit, tsi, valid_aph_1)
-    create_risk(product, insurer, multiplier, s2b32('7'), uaiId, cropId, trigger, exit, tsi, valid_aph_2)
-
-    with brownie.reverts('ERROR:AYI-046:RISK_APH_ZERO_INVALID'):
-        create_risk(product, insurer, multiplier, projectId, uaiId, cropId, trigger, exit, tsi, bad_aph_1)
-
-    with brownie.reverts('ERROR:AYI-047:RISK_APH_TOO_LARGE'):
-        create_risk(product, insurer, multiplier, projectId, uaiId, cropId, trigger, exit, tsi, bad_aph_2)
-
+    with brownie.reverts('ERROR:RAIN-045:RISK_END_DATE_INVALID'):
+        create_risk(product, insurer, startDate, bad_endDate2, s2b32('13'), lat, long, trigger, exit, aph)
 
 def test_risk_adjustment_happy_case(
     instance: GifInstance, 
@@ -161,36 +148,36 @@ def test_risk_adjustment_happy_case(
 ):
     product = gifRainProduct.getContract()
     multiplier = product.getPercentageMultiplier()
+    coordMultiplier = product.getCoordinatesMultiplier()
 
-    projectId = s2b32('2022.kenya.wfp.rain')
-    uaiId = s2b32('1234')
-    cropId = s2b32('mixed')
+    startDate = time.time() + 100
+    endDate = time.time() + 1000
+    placeId = s2b32('10001.saopaulo') # mm 
+    lat = -23.550620
+    long = -46.634370
+    trigger = 0.1 # %
+    exit = 1.0 # %
+    aph = 5.0 # mm
 
-    trigger = 0.75
-    exit = 0.1
-    tsi = 0.9
-    aph = 1.9
+    riskId = create_risk(product, insurer, startDate, endDate, placeId, lat, long, trigger, exit, aph)
 
-    riskId = create_risk(product, insurer, multiplier, projectId, uaiId, cropId, trigger, exit, tsi, aph)
+    trigger_new = 0.2 * multiplier
+    exit_new = 0.75 * multiplier
+    aph_new = 2.0
 
-    trigger_new = 0.765 * multiplier
-    exit_new = 0.123 * multiplier
-    tsi_new = 0.876 * multiplier
-    aph_new = 1.123 * multiplier
-
-    tx = product.adjustRisk(riskId, trigger_new, exit_new, tsi_new, aph_new, {'from': insurer})
+    tx = product.adjustRisk(riskId, trigger_new, exit_new, aph_new, {'from': insurer})
     print(tx.info())
 
     risk = product.getRisk(riskId)
     assert risk[0] == riskId
-    assert risk[1] == projectId
-    assert risk[2] == uaiId
-    assert risk[3] == cropId
-    assert risk[4] == trigger_new
-    assert risk[5] == exit_new
-    assert risk[6] == tsi_new
-    assert risk[7] == aph_new
-
+    assert risk[1] == startDate
+    assert risk[2] == endDate
+    assert risk[3] == placeId
+    assert risk[4] == coordMultiplier * lat
+    assert risk[5] == coordMultiplier * long
+    assert risk[6] == trigger_new
+    assert risk[7] == exit_new
+    assert risk[8] == aph_new
 
 def test_risk_adjustment_with_policy(
     instance: GifInstance, 
@@ -223,15 +210,18 @@ def test_risk_adjustment_with_policy(
     fund_customer(instance, instanceOperator, customer, token, customerFunding)
 
     multiplier = product.getPercentageMultiplier()
-    projectId = s2b32('2022.kenya.wfp.rain')
-    uaiId = s2b32('1234')
-    cropId = s2b32('mixed')
+    coordMultiplier = product.getCoordinatesMultiplier()
 
-    trigger = 0.75
-    exit = 0.1
-    tsi = 0.9
-    aph = 1.9
-    riskId = create_risk(product, insurer, multiplier, projectId, uaiId, cropId, trigger, exit, tsi, aph)
+    startDate = time.time() + 100
+    endDate = time.time() + 1000
+    placeId = s2b32('10001.saopaulo') # mm 
+    lat = -23.550620
+    long = -46.634370
+    trigger = 0.1 # %
+    exit = 1.0 # %
+    aph = 2.0 # mm
+
+    riskId = create_risk(product, insurer, startDate, endDate, placeId, lat, long, trigger, exit, aph)
 
     premium = 300
     sumInsured = 2000
@@ -241,25 +231,26 @@ def test_risk_adjustment_with_policy(
     assert product.policies(riskId) == 1
     assert product.getPolicyId(riskId, 0) == processId
 
-    trigger_new = 0.765 * multiplier
-    exit_new = 0.123 * multiplier
-    tsi_new = 0.876 * multiplier
-    aph_new = 1.123 * multiplier
+    trigger_new = 0.2 * multiplier
+    exit_new = 0.75 * multiplier
+    aph_new = 3.0
 
-    with brownie.reverts('ERROR:AYI-003:RISK_WITH_POLICIES_NOT_ADJUSTABLE'):
-        product.adjustRisk(riskId, trigger_new, exit_new, tsi_new, aph_new, {'from': insurer})
+    with brownie.reverts('ERROR:RAIN-003:RISK_WITH_POLICIES_NOT_ADJUSTABLE'):
+        product.adjustRisk(riskId, trigger_new, exit_new, aph_new, {'from': insurer})
 
 
-def create_risk(product, insurer, multiplier, projectId, uaiId, cropId, trigger, exit, tsi_at_exit, aph):
-
+def create_risk(product, insurer, startDate, endDate, placeId, lat, long, trigger, exit, aph):
+    multiplier = product.getPercentageMultiplier()
+    coordMultiplier = product.getCoordinatesMultiplier()
     tx = product.createRisk(
-        projectId,
-        uaiId,
-        cropId,
+        startDate,
+        endDate,
+        placeId,
+        lat * coordMultiplier,
+        long * coordMultiplier,
         trigger * multiplier,
         exit * multiplier,
-        tsi_at_exit * multiplier,
-        aph * multiplier,
+        aph,
         {'from': insurer }
     )
 

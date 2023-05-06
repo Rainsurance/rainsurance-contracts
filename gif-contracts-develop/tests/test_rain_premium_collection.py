@@ -1,5 +1,6 @@
 import brownie
 import pytest
+import time
 
 from brownie.network import accounts
 from brownie.network.account import Account
@@ -236,22 +237,25 @@ def create_risk(
     product,
     insurer
 ):
-    projectId = s2b32('2022.kenya.wfp.rain')
-    uaiId = s2b32('1234')
-    cropId = s2b32('mixed')
-    
-    triggerFloat = 0.75
-    exitFloat = 0.1
-    tsiFloat = 0.9
-    aphFloat = 2.0
+    startDate = time.time() + 100
+    endDate = time.time() + 1000
+    placeId = s2b32('10001.saopaulo')
+    latFloat = -23.550620
+    longFloat = -46.634370
+    triggerFloat = 0.1 # %
+    exitFloat = 1.0 # %
+    aphFloat = 3.0 # mm
     
     multiplier = product.getPercentageMultiplier()
+    coordMultiplier = product.getCoordinatesMultiplier()
+
     trigger = multiplier * triggerFloat
     exit = multiplier * exitFloat
-    tsi = multiplier * tsiFloat
-    aph = multiplier * aphFloat
+    lat = coordMultiplier * latFloat
+    long = coordMultiplier * longFloat
+    aph = aphFloat
 
-    tx = product.createRisk(projectId, uaiId, cropId, trigger, exit, tsi, aph, {'from': insurer})
+    tx = product.createRisk(startDate, endDate, placeId, lat, long, trigger, exit, aph, {'from': insurer})
 
     # return riskId
     return tx.return_value

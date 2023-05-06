@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.2;
 
-import "../gif/shared/TransferHelper.sol";
-
 import "@openzeppelin/contracts/access/AccessControl.sol";
 import "@openzeppelin/contracts/proxy/utils/Initializable.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
@@ -10,8 +8,9 @@ import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 
 import "@etherisc/gif-interface/contracts/components/Product.sol";
-import "../gif/modules/PolicyController.sol";
 
+import "../gif/shared/TransferHelper.sol";
+import "../gif/modules/PolicyController.sol";
 import "../gif/modules/AccessController.sol";
 
 contract RainProduct is 
@@ -21,36 +20,33 @@ contract RainProduct is
 {
     using EnumerableSet for EnumerableSet.Bytes32Set;
 
-    bytes32 public constant NAME = "AreaYieldIndexProduct";
-    bytes32 public constant VERSION = "0.1";
+    bytes32 public constant NAME = "RainProduct";
+    bytes32 public constant VERSION = "0.0.1";
     bytes32 public constant POLICY_FLOW = "PolicyDefaultFlow";
 
     bytes32 public constant INSURER_ROLE = keccak256("INSURER");
 
+    uint256 public constant COORD_MULTIPLIER = 10**6;
     uint256 public constant PERCENTAGE_MULTIPLIER = 2**24;
 
     uint256 public constant AAAY_MIN = 0;
-    uint256 public constant AAAY_MAX = 15;
-
-    uint256 public constant RISK_APH_MAX = 15 * PERCENTAGE_MULTIPLIER;
-    uint256 public constant RISK_EXIT_MAX = PERCENTAGE_MULTIPLIER / 5;
-    uint256 public constant RISK_TSI_AT_EXIT_MIN = PERCENTAGE_MULTIPLIER / 2;
-
-    // group policy data structure
+    uint256 public constant AAAY_MAX = 1000;
+    
     struct Risk {
-        bytes32 id; // hash over projectId, uaiId, cropId
-        bytes32 projectId; // assumption: this makes risk unique over aggregarors/customers/seasons
-        bytes32 uaiId; // region id
-        bytes32 cropId; // crop id
-        uint256 trigger; // at and above this harvest ratio no payout is made 
-        uint256 exit; // at and below this harvest ration the max payout is made
-        uint256 tsi; // total sum insured at exit: max . payout percentage at exit
-        uint256 aph; // average historical area yield for this crop and region
+        bytes32 id; // hash over placeId, start, end
+        uint256 startDate; // ~ cropId
+        uint256 endDate;
+        bytes32 placeId; // ~ uaiId
+        int256 lat;
+        int256 long;
+        uint256 trigger;  // at and bellow this precipitation no payout is made (%)
+        uint256 exit; // at and above this precipitation the max payout is made (%)
+        uint256 aph; // historical precipitation for placeId (mm)
         uint256 requestId; 
         bool requestTriggered;
         uint256 responseAt;
-        uint256 aaay; // average area yield for current season for this crop and region
-        uint256 payoutPercentage; // payout percentage for this year for this crop and region
+        uint256 aaay;  // actual precipitation for placeId in the current period (mm)
+        uint256 payoutPercentage; // payout percentage for placeId in the current period (%)
         uint256 createdAt;
         uint256 updatedAt;
     }
@@ -58,27 +54,28 @@ contract RainProduct is
     uint256 private _oracleId;
     IERC20 private _token;
 
+    // variables
     bytes32 [] private _riskIds;
     mapping(bytes32 /* riskId */ => Risk) private _risks;
     mapping(bytes32 /* riskId */ => EnumerableSet.Bytes32Set /* processIds */) private _policies;
     bytes32 [] private _applications; // useful for debugging, might need to get rid of this
 
+    // events
     event LogRainPolicyApplicationCreated(bytes32 policyId, address policyHolder, uint256 premiumAmount, uint256 sumInsuredAmount);
     event LogRainPolicyCreated(bytes32 policyId, address policyHolder, uint256 premiumAmount, uint256 sumInsuredAmount);
-    event LogRainRiskDataCreated(bytes32 riskId, bytes32 productId, bytes32 uaiId, bytes32 cropId);
-    event LogRainRiskDataBeforeAdjustment(bytes32 riskId, uint256 trigger, uint256 exit, uint256 tsi, uint aph);
-    event LogRainRiskDataAfterAdjustment(bytes32 riskId, uint256 trigger, uint256 exit, uint256 tsi, uint aph);
-    event LogRainRiskDataRequested(uint256 requestId, bytes32 riskId, bytes32 projectId, bytes32 uaiId, bytes32 cropId);
-    event LogRainRiskDataReceived(uint256 requestId, bytes32 riskId, uint256 aaay);
-    event LogRainRiskDataRequestCancelled(bytes32 processId, uint256 requestId);
+    event LogRainPolicyExpired(string objectName, bytes32 processId);
+    event LogRainOracleCallbackReceived(uint256 requestId, bytes32 processId, bytes fireCategory);
+    event LogRainClaimConfirmed(bytes32 processId, uint256 claimId, uint256 payoutAmount);
+    event LogRainPayoutExecuted(bytes32 processId, uint256 claimId, uint256 payoutId, uint256 payoutAmount);
+    event LogRainRiskDataCreated(bytes32 riskId, bytes32 placeId, uint256 startDate, uint256 endDate);
     event LogRainRiskProcessed(bytes32 riskId, uint256 policies);
     event LogRainPolicyProcessed(bytes32 policyId);
     event LogRainClaimCreated(bytes32 policyId, uint256 claimId, uint256 payoutAmount);
     event LogRainPayoutCreated(bytes32 policyId, uint256 payoutAmount);
+    event LogRainRiskDataRequested(uint256 requestId, bytes32 riskId, bytes32 placeId, uint256 startDate, uint256 endDate);
+    event LogRainRiskDataRequestCancelled(bytes32 processId, uint256 requestId);
+    event LogRainRiskDataReceived(uint256 requestId, bytes32 riskId, uint256 aaay);
 
-    event LogTransferHelperInputValidation1Failed(bool tokenIsContract, address from, address to);
-    event LogTransferHelperInputValidation2Failed(uint256 balance, uint256 allowance);
-    event LogTransferHelperCallFailed(bool callSuccess, uint256 returnDataLength, bytes returnData);
 
     constructor(
         bytes32 productName,
@@ -98,92 +95,81 @@ contract RainProduct is
     }
 
     function createRisk(
-        bytes32 projectId,
-        bytes32 uaiId,
-        bytes32 cropId,
+        uint256 startDate,
+        uint256 endDate,
+        bytes32 placeId,
+        int256 lat,
+        int256 long,
         uint256 trigger,
         uint256 exit,
-        uint256 tsi,
         uint256 aph
     )
         external
         onlyRole(INSURER_ROLE)
         returns(bytes32 riskId)
     {
-        _validateRiskParameters(trigger, exit, tsi, aph);
 
-        riskId = getRiskId(projectId, uaiId, cropId);
+        _validateRiskParameters(trigger, exit, aph);
+        require(startDate > block.timestamp, "ERROR:RAIN-044:RISK_START_DATE_INVALID"); // solhint-disable-line
+        require(endDate > startDate, "ERROR:RAIN-045:RISK_END_DATE_INVALID");
+
+        riskId = getRiskId(placeId, startDate, endDate);
         _riskIds.push(riskId);
 
         Risk storage risk = _risks[riskId];
-        require(risk.createdAt == 0, "ERROR:AYI-001:RISK_ALREADY_EXISTS");
+        require(risk.createdAt == 0, "ERROR:RAIN-001:RISK_ALREADY_EXISTS");
 
         risk.id = riskId;
-        risk.projectId = projectId;
-        risk.uaiId = uaiId;
-        risk.cropId = cropId;
+        risk.startDate = startDate;
+        risk.endDate = endDate;
+        risk.placeId = placeId;
+        risk.lat = lat;
+        risk.long = long;
         risk.trigger = trigger;
         risk.exit = exit;
-        risk.tsi = tsi;
         risk.aph = aph;
         risk.createdAt = block.timestamp; // solhint-disable-line
         risk.updatedAt = block.timestamp; // solhint-disable-line
 
         emit LogRainRiskDataCreated(
             risk.id, 
-            risk.projectId,
-            risk.uaiId, 
-            risk.cropId);
+            risk.placeId,
+            risk.startDate, 
+            risk.endDate);
     }
 
     function adjustRisk(
         bytes32 riskId,
         uint256 trigger,
         uint256 exit,
-        uint256 tsi,
         uint256 aph
     )
         external
         onlyRole(INSURER_ROLE)
     {
-        _validateRiskParameters(trigger, exit, tsi, aph);
+        _validateRiskParameters(trigger, exit, aph);
 
         Risk storage risk = _risks[riskId];
-        require(risk.createdAt > 0, "ERROR:AYI-002:RISK_UNKNOWN");
-        require(EnumerableSet.length(_policies[riskId]) == 0, "ERROR:AYI-003:RISK_WITH_POLICIES_NOT_ADJUSTABLE");
-
-        emit LogRainRiskDataBeforeAdjustment(
-            risk.id, 
-            risk.trigger,
-            risk.exit, 
-            risk.tsi,
-            risk.aph);
+        require(risk.createdAt > 0, "ERROR:RAIN-002:RISK_UNKNOWN");
+        require(EnumerableSet.length(_policies[riskId]) == 0, "ERROR:RAIN-003:RISK_WITH_POLICIES_NOT_ADJUSTABLE");
         
         risk.trigger = trigger;
         risk.exit = exit;
-        risk.tsi = tsi;
         risk.aph = aph;
-
-        emit LogRainRiskDataAfterAdjustment(
-            risk.id, 
-            risk.trigger,
-            risk.exit, 
-            risk.tsi,
-            risk.aph);
+        risk.updatedAt = block.timestamp; // solhint-disable-line
     }
 
     function getRiskId(
-        bytes32 projectId,
-        bytes32 uaiId,
-        bytes32 cropId
+        bytes32 placeId,
+        uint256 startDate,
+        uint256 endDate
     )
         public
         pure
         returns(bytes32 riskId)
     {
-        riskId = keccak256(abi.encode(projectId, uaiId, cropId));
+        riskId = keccak256(abi.encode(placeId, startDate, endDate)); // TODO: will encode work uint256?
     }
-
 
     function applyForPolicy(
         address policyHolder, 
@@ -196,8 +182,8 @@ contract RainProduct is
         returns(bytes32 processId)
     {
         Risk storage risk = _risks[riskId];
-        require(risk.createdAt > 0, "ERROR:AYI-004:RISK_UNDEFINED");
-        require(policyHolder != address(0), "ERROR:AYI-005:POLICY_HOLDER_ZERO");
+        require(risk.createdAt > 0, "ERROR:RAIN-004:RISK_UNDEFINED");
+        require(policyHolder != address(0), "ERROR:RAIN-005:POLICY_HOLDER_ZERO");
 
         bytes memory metaData = "";
         bytes memory applicationData = abi.encode(riskId);
@@ -221,7 +207,7 @@ contract RainProduct is
 
         if (success) {
             EnumerableSet.add(_policies[riskId], processId);
-   
+
             emit LogRainPolicyCreated(
                 processId, 
                 policyHolder, 
@@ -301,14 +287,15 @@ contract RainProduct is
         returns(uint256 requestId)
     {
         Risk storage risk = _risks[_getRiskId(processId)];
-        require(risk.createdAt > 0, "ERROR:AYI-010:RISK_UNDEFINED");
-        require(risk.responseAt == 0, "ERROR:AYI-011:ORACLE_ALREADY_RESPONDED");
+        require(risk.createdAt > 0, "ERROR:RAIN-010:RISK_UNDEFINED");
+        require(risk.responseAt == 0, "ERROR:RAIN-011:ORACLE_ALREADY_RESPONDED");
 
         bytes memory queryData = abi.encode(
-            risk.projectId,
-            risk.uaiId,
-            risk.cropId
-        );
+            risk.startDate,
+            risk.endDate,
+            risk.lat,
+            risk.long
+        ); //TODO: abi.encode funciona com uint256 e int256?
 
         requestId = _request(
                 processId, 
@@ -323,20 +310,20 @@ contract RainProduct is
 
         emit LogRainRiskDataRequested(
             risk.requestId, 
-            risk.id, 
-            risk.projectId, 
-            risk.uaiId, 
-            risk.cropId);
-    }    
+            risk.id,
+            risk.placeId,
+            risk.startDate, 
+            risk.endDate);
+    }
 
     function cancelOracleRequest(bytes32 processId) 
         external
         onlyRole(INSURER_ROLE)
     {
         Risk storage risk = _risks[_getRiskId(processId)];
-        require(risk.createdAt > 0, "ERROR:AYI-012:RISK_UNDEFINED");
-        require(risk.requestTriggered, "ERROR:AYI-013:ORACLE_REQUEST_NOT_FOUND");
-        require(risk.responseAt == 0, "ERROR:AYI-014:EXISTING_CALLBACK");
+        require(risk.createdAt > 0, "ERROR:RAIN-012:RISK_UNDEFINED");
+        require(risk.requestTriggered, "ERROR:RAIN-013:ORACLE_REQUEST_NOT_FOUND");
+        require(risk.responseAt == 0, "ERROR:RAIN-014:EXISTING_CALLBACK");
 
         _cancelRequest(risk.requestId);
 
@@ -345,7 +332,7 @@ contract RainProduct is
         risk.updatedAt = block.timestamp; // solhint-disable-line
 
         emit LogRainRiskDataRequestCancelled(processId, risk.requestId);
-    }    
+    }
 
     function oracleCallback(
         uint256 requestId, 
@@ -356,28 +343,24 @@ contract RainProduct is
         onlyOracle
     {
         (
-            bytes32 projectId, 
-            bytes32 uaiId, 
-            bytes32 cropId, 
+            bytes32 placeId, 
+            uint256 startDate, 
+            uint256 endDate, 
             uint256 aaay
-        ) = abi.decode(responseData, (bytes32, bytes32, bytes32, uint256));
+        ) = abi.decode(responseData, (bytes32, uint256, uint256, uint256));
 
         bytes32 riskId = _getRiskId(processId);
-        require(riskId == getRiskId(projectId, uaiId, cropId), "ERROR:AYI-020:RISK_ID_MISMATCH");
+        require(riskId == getRiskId(placeId, startDate, endDate), "ERROR:RAIN-020:RISK_ID_MISMATCH");
 
         Risk storage risk = _risks[riskId];
-        require(risk.createdAt > 0, "ERROR:AYI-021:RISK_UNDEFINED");
-        require(risk.requestId == requestId, "ERROR:AYI-022:REQUEST_ID_MISMATCH");
-        require(risk.responseAt == 0, "ERROR:AYI-023:EXISTING_CALLBACK");
-
-        require(aaay >= (AAAY_MIN * PERCENTAGE_MULTIPLIER) 
-                && aaay < (AAAY_MAX * PERCENTAGE_MULTIPLIER), 
-                "ERROR:AYI-024:AAAY_INVALID");
+        require(risk.createdAt > 0, "ERROR:RAIN-021:RISK_UNDEFINED");
+        require(risk.requestId == requestId, "ERROR:RAIN-022:REQUEST_ID_MISMATCH");
+        require(risk.responseAt == 0, "ERROR:RAIN-023:EXISTING_CALLBACK");
+        require(aaay >= AAAY_MIN && aaay < AAAY_MAX, "ERROR:RAIN-024:AAAY_INVALID");
 
         // update risk using aaay info
         risk.aaay = aaay;
         risk.payoutPercentage = calculatePayoutPercentage(
-            risk.tsi,
             risk.trigger,
             risk.exit,
             risk.aph,
@@ -399,7 +382,7 @@ contract RainProduct is
         returns(bytes32 [] memory processedPolicies)
     {
         Risk memory risk = _risks[riskId];
-        require(risk.responseAt > 0, "ERROR:AYI-030:ORACLE_RESPONSE_MISSING");
+        require(risk.responseAt > 0, "ERROR:RAIN-030:ORACLE_RESPONSE_MISSING");
 
         uint256 elements = EnumerableSet.length(_policies[riskId]);
         if (elements == 0) {
@@ -407,8 +390,11 @@ contract RainProduct is
             return new bytes32[](0);
         }
 
-        if (batchSize == 0) { batchSize = elements; } 
-        else                 { batchSize = min(batchSize, elements); }
+        if (batchSize == 0) {
+            batchSize = elements;
+        } else{
+            batchSize = min(batchSize, elements);
+        }
 
         processedPolicies = new bytes32[](batchSize);
         uint256 elementIdx = elements - 1;
@@ -431,12 +417,11 @@ contract RainProduct is
         bytes32 riskId = abi.decode(application.data, (bytes32));
         Risk memory risk = _risks[riskId];
 
-        require(risk.id == riskId, "ERROR:AYI-031:RISK_ID_INVALID");
-        require(risk.responseAt > 0, "ERROR:AYI-032:ORACLE_RESPONSE_MISSING");
-        require(EnumerableSet.contains(_policies[riskId], policyId), "ERROR:AYI-033:POLICY_FOR_RISK_UNKNOWN");
+        require(risk.id == riskId, "ERROR:RAIN-031:RISK_ID_INVALID");
+        require(risk.responseAt > 0, "ERROR:RAIN-032:ORACLE_RESPONSE_MISSING");
+        require(EnumerableSet.contains(_policies[riskId], policyId), "ERROR:RAIN-033:POLICY_FOR_RISK_UNKNOWN");
 
         EnumerableSet.remove(_policies[riskId], policyId);
-
 
         uint256 claimAmount = calculatePayout(
             risk.payoutPercentage, 
@@ -474,39 +459,37 @@ contract RainProduct is
     }
 
     function calculatePayoutPercentage(
-        uint256 tsi, // max payout percentage
-        uint256 trigger,// at and above this harvest ratio no payout is made 
-        uint256 exit, // at and below this harvest ration the max payout is made
-        uint256 aph, // average historical yield
-        uint256 aaay // this season's yield
+        uint256 trigger, // at and bellow this precipitation no payout is made (%)
+        uint256 exit, // at and above this precipitation the max payout is made (%)
+        uint256 aph, // historical precipitation for placeId (mm)
+        uint256 aaay // actual precipitation for placeId in the current period (mm)
     )
         public
         pure
         returns(uint256 payoutPercentage)
     {
-        // this year's harvest at or above threshold for any payouts
-        if (aaay * PERCENTAGE_MULTIPLIER >= aph * trigger) {
+        if (aaay <= aph) {
             return 0;
         }
-
-        // this year's harvest at or below threshold for maximal payout
-        if (aaay * PERCENTAGE_MULTIPLIER <= aph * exit) {
-            return tsi;
+        uint256 extra = PERCENTAGE_MULTIPLIER * (aaay - aph) / aph;
+        if (extra <= trigger) {
+            return 0;
         }
-
-        // calculated payout between exit and trigger
-        uint256 harvestRatio = PERCENTAGE_MULTIPLIER * aaay / aph;
-        payoutPercentage = tsi * (trigger - harvestRatio) / (trigger - exit);
+        // calculated payout between exit and trigger  
+        payoutPercentage = min(PERCENTAGE_MULTIPLIER, PERCENTAGE_MULTIPLIER * extra / exit);
     }
 
     function getPercentageMultiplier() external pure returns(uint256 multiplier) {
         return PERCENTAGE_MULTIPLIER;
     }
 
+    function getCoordinatesMultiplier() external pure returns(uint256 multiplier) {
+        return COORD_MULTIPLIER;
+    }
+
     function min(uint256 a, uint256 b) private pure returns (uint256) {
         return a <= b ? a : b;
     }
-
 
     function risks() external view returns(uint256) { return _riskIds.length; }
     function getRiskId(uint256 idx) external view returns(bytes32 riskId) { return _riskIds[idx]; }
@@ -515,7 +498,6 @@ contract RainProduct is
     function applications() external view returns(uint256 applicationCount) {
         return _applications.length;
     }
-
     function getApplicationId(uint256 applicationIdx) external view returns(bytes32 processId) {
         return _applications[applicationIdx];
     }
@@ -523,34 +505,21 @@ contract RainProduct is
     function policies(bytes32 riskId) external view returns(uint256 policyCount) {
         return EnumerableSet.length(_policies[riskId]);
     }
-
     function getPolicyId(bytes32 riskId, uint256 policyIdx) external view returns(bytes32 processId) {
         return EnumerableSet.at(_policies[riskId], policyIdx);
     }
 
-    function getApplicationDataStructure() external override pure returns(string memory dataStructure) {
-        return "(bytes32 riskId)";
-    }
-
-
     function _validateRiskParameters(
         uint256 trigger, 
         uint256 exit,
-        uint256 tsi,
         uint256 aph
     )
-        internal
+        internal pure
     {
-        require(trigger <= PERCENTAGE_MULTIPLIER, "ERROR:AYI-040:RISK_TRIGGER_TOO_LARGE");
-        require(trigger > exit, "ERROR:AYI-041:RISK_TRIGGER_NOT_LARGER_THAN_EXIT");
-        require(exit <= RISK_EXIT_MAX, "ERROR:AYI-042:RISK_EXIT_TOO_LARGE");
-        require(tsi >= RISK_TSI_AT_EXIT_MIN , "ERROR:AYI-043:RISK_TSI_TOO_SMALL");
-        require(tsi <= PERCENTAGE_MULTIPLIER , "ERROR:AYI-044:RISK_TSI_TOO_LARGE");
-        require(tsi + exit <= PERCENTAGE_MULTIPLIER, "ERROR:AYI-045:RISK_TSI_EXIT_SUM_TOO_LARGE");
-        require(aph > 0, "ERROR:AYI-046:RISK_APH_ZERO_INVALID");
-        require(aph <= RISK_APH_MAX, "ERROR:AYI-047:RISK_APH_TOO_LARGE");
+        require(trigger <= PERCENTAGE_MULTIPLIER, "ERROR:RAIN-041:RISK_TRIGGER_TOO_LARGE");
+        require(exit > trigger, "ERROR:RAIN-042:RISK_EXIT_NOT_LARGER_THAN_TRIGGER");
+        require(aph > 0, "ERROR:RAIN-043:RISK_APH_ZERO_INVALID");
     }
-
     function _processPolicy(bytes32 policyId, Risk memory risk)
         internal
     {
@@ -585,4 +554,5 @@ contract RainProduct is
         IPolicy.Application memory application = _getApplication(processId);
         (riskId) = abi.decode(application.data, (bytes32));
     }
+
 }

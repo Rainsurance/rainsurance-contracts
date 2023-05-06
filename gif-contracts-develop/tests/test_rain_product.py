@@ -1,5 +1,6 @@
 import brownie
 import pytest
+import time
 
 from brownie.network.account import Account
 
@@ -96,31 +97,34 @@ def test_happy_path(
 
     print('--- test setup risks -------------------------------------')
 
-    projectId = s2b32('2022.kenya.wfp.rain')
-    uaiId = [s2b32('1234'), s2b32('2345')]
-    cropId = s2b32('mixed')
-    
-    triggerFloat = 0.75
-    exitFloat = 0.1
-    tsiFloat = 0.9
-    aphFloat = [2.0, 1.8]
-    
+    startDate = time.time() + 100
+    endDate = time.time() + 1000
+    placeId = [s2b32('10001.saopaulo'), s2b32('10002.paris')] # mm 
+    latFloat = [-23.550620, 48.856613]
+    longFloat = [-46.634370, 2.352222]
+    triggerFloat = 0.1 # %
+    exitFloat = 1.0 # %
+    aphFloat = [5.0, 2.0] # mm
+
     multiplier = product.getPercentageMultiplier()
+    coordMultiplier = product.getCoordinatesMultiplier()
+
     trigger = multiplier * triggerFloat
     exit = multiplier * exitFloat
-    tsi = multiplier * tsiFloat
-    aph = [multiplier * aphFloat[0], multiplier * aphFloat[1]]
+    lat = [coordMultiplier * latFloat[0], coordMultiplier * latFloat[1]]
+    long = [coordMultiplier * longFloat[0], coordMultiplier * longFloat[1]]
+    aph = [aphFloat[0], aphFloat[1]]
 
     tx = [None, None]
-    tx[0] = product.createRisk(projectId, uaiId[0], cropId, trigger, exit, tsi, aph[0], {'from': insurer})
-    tx[1] = product.createRisk(projectId, uaiId[1], cropId, trigger, exit, tsi, aph[1], {'from': insurer})
+    tx[0] = product.createRisk(startDate, endDate, placeId[0], lat[0], long[0], trigger, exit, aph[0], {'from': insurer})
+    tx[1] = product.createRisk(startDate, endDate, placeId[1], lat[1], long[1], trigger, exit, aph[1], {'from': insurer})
 
     riskId = [None, None]
     riskId = [tx[0].return_value, tx[1].return_value]
     print('riskId {}'.format(riskId))
     assert riskId[0] != riskId[1]
-    assert riskId[0] == product.getRiskId(projectId, uaiId[0], cropId)
-    assert riskId[1] == product.getRiskId(projectId, uaiId[1], cropId)
+    assert riskId[0] == product.getRiskId(placeId[0], startDate, endDate)
+    assert riskId[1] == product.getRiskId(placeId[1], startDate, endDate)
     
 
     print('--- test setup funding customers -------------------------')
@@ -247,10 +251,10 @@ def test_happy_path(
     requestEvent = tx[0].events['LogRainRiskDataRequested'][0]
     print('rain requestEvent {}'.format(requestEvent))
     assert requestEvent['requestId'] == requestId[0]
-    assert requestEvent['projectId'] == projectId
     assert requestEvent['riskId'] == riskId[0]
-    assert requestEvent['uaiId'] == uaiId[0]
-    assert requestEvent['cropId'] == cropId
+    assert requestEvent['placeId'] == placeId[0]
+    assert requestEvent['startDate'] == startDate
+    assert requestEvent['endDate'] == endDate
 
 
     print('--- step test oracle response ----------------------------')
@@ -263,15 +267,14 @@ def test_happy_path(
 
     # create aaay data for oracle response
     # aaay value selected triggers a payout
-    aaayFloat = 1.1
-    aaay = product.getPercentageMultiplier() * aaayFloat
+    aaay = aph[0] + 1
 
     data = [None, None]
     data[0] = oracle.encodeFulfillParameters(
         clRequestEvent['requestId'], 
-        projectId, 
-        uaiId[0], 
-        cropId, 
+        placeId[0],
+        startDate, 
+        endDate, 
         aaay
     )
 
@@ -285,14 +288,14 @@ def test_happy_path(
         data[0]
     )
 
-    print(tx[0].info())
+    print(tx[0])
 
     # simulate callback for 2nd risk
     data[1] = oracle.encodeFulfillParameters(
         clRequestEvent1['requestId'],
-        projectId, 
-        uaiId[1], 
-        cropId, 
+        placeId[1], 
+        startDate, 
+        endDate,
         aph[1] # setting aaay to aph will result in a 0 payout
     )
 
@@ -358,14 +361,20 @@ def test_happy_path(
     assert policy['updatedAt'] >= policy['createdAt']
 
     expectedClaimPercentage = product.calculatePayoutPercentage(
-        risk['tsi'],
         risk['trigger'],
         risk['exit'],
         risk['aph'],
         risk['aaay'],
     )
 
-    expectedPayoutAmount = int(expectedClaimPercentage * sumInsured[0] / product.getPercentageMultiplier())
+    print('trigger {}'.format(risk['trigger']))
+    print('exit {}'.format(risk['exit']))
+    print('aph {}'.format(risk['aph']))
+    print('aaay {}'.format(risk['aaay']))
+    print('expectedClaimPercentage {}'.format(expectedClaimPercentage))
+
+    expectedPayoutAmount = int(expectedClaimPercentage * sumInsured[0] / multiplier)
+
     assert expectedPayoutAmount > 0
     assert expectedPayoutAmount <= sumInsured[0]
 
@@ -567,60 +576,57 @@ def test_payout_percentage_calculation(gifRainProduct: GifRainProduct):
     multiplier = product.getPercentageMultiplier()
 
     # product example values
-    tsi = 0.9
-    trigger = 0.75
-    exit = 0.1
+    trigger = 0.2
+    exit = 1.0
 
     # random example values
-    # expected payout = 0.091093117, aph = 1.9, aaay = 1.3
-    assert get_payout_delta(0.091093117, 1.9, 1.3, tsi, trigger, exit, product, multiplier) < 0.00000001
+    assert get_payout_delta(0.4, 5, 7, trigger, exit, product, multiplier) < 0.0000001
+
+    # expectedPayoutPercentage, aph, aaay, trigger, exit, product, multiplier
+
+    trigger = 0.05
+    exit = 1.0
+    aph = 5.0
 
     # run through product example table
-    # harvest ratio >= trigger (75%) give 0 payout 
-    assert get_payout_delta(0, 100.0, 110.0, tsi, trigger, exit, product, multiplier) < 0.00000001
-    assert get_payout_delta(0, 100.0, 100.0, tsi, trigger, exit, product, multiplier) < 0.00000001
-    assert get_payout_delta(0, 100.0,  95.0, tsi, trigger, exit, product, multiplier) < 0.00000001
-    assert get_payout_delta(0, 100.0,  90.0, tsi, trigger, exit, product, multiplier) < 0.00000001
-    assert get_payout_delta(0, 100.0,  85.0, tsi, trigger, exit, product, multiplier) < 0.00000001
-    assert get_payout_delta(0, 100.0,  80.0, tsi, trigger, exit, product, multiplier) < 0.00000001
-    assert get_payout_delta(0, 100.0,  75.0, tsi, trigger, exit, product, multiplier) < 0.00000001
-    assert get_payout_delta(0.06923073, 100.0,  70.0, tsi, trigger, exit, product, multiplier) < 0.00000001
-    assert get_payout_delta(0.13846153, 100.0,  65.0, tsi, trigger, exit, product, multiplier) < 0.00000001
-    assert get_payout_delta(0.20769232, 100.0,  60.0, tsi, trigger, exit, product, multiplier) < 0.00000001
-    assert get_payout_delta(0.27692312, 100.0,  55.0, tsi, trigger, exit, product, multiplier) < 0.00000001
-    assert get_payout_delta(0.34615379, 100.0,  50.0, tsi, trigger, exit, product, multiplier) < 0.00000001
-    assert get_payout_delta(0.41538459, 100.0,  45.0, tsi, trigger, exit, product, multiplier) < 0.00000001
-    assert get_payout_delta(0.48461532, 100.0,  40.0, tsi, trigger, exit, product, multiplier) < 0.00000001
-    assert get_payout_delta(0.55384612, 100.0,  35.0, tsi, trigger, exit, product, multiplier) < 0.00000001
-    assert get_payout_delta(0.62307691, 100.0,  30.0, tsi, trigger, exit, product, multiplier) < 0.00000001
-    assert get_payout_delta(0.69230759, 100.0,  25.0, tsi, trigger, exit, product, multiplier) < 0.00000001
-    assert get_payout_delta(0.76153838, 100.0,  20.0, tsi, trigger, exit, product, multiplier) < 0.00000001
-    assert get_payout_delta(0.83076918, 100.0,  15.0, tsi, trigger, exit, product, multiplier) < 0.00000001
-    assert get_payout_delta(0.9, 100.0,  10.0, tsi, trigger, exit, product, multiplier) < 0.0000001
-    assert get_payout_delta(0.9, 100.0,   5.0, tsi, trigger, exit, product, multiplier) < 0.0000001
-    assert get_payout_delta(0.9, 100.0,   0.0, tsi, trigger, exit, product, multiplier) < 0.0000001
-
+    assert get_payout_delta(0, aph, 0, trigger, exit, product, multiplier) < 0.0000001
+    assert get_payout_delta(0, aph, 1, trigger, exit, product, multiplier) < 0.0000001
+    assert get_payout_delta(0, aph, 2, trigger, exit, product, multiplier) < 0.0000001
+    assert get_payout_delta(0, aph, 3, trigger, exit, product, multiplier) < 0.0000001
+    assert get_payout_delta(0, aph, 4, trigger, exit, product, multiplier) < 0.0000001
+    assert get_payout_delta(0, aph, 5, trigger, exit, product, multiplier) < 0.0000001
+    assert get_payout_delta(0.2, aph, 6, trigger, exit, product, multiplier) < 0.0000001
+    assert get_payout_delta(0.4, aph, 7, trigger, exit, product, multiplier) < 0.0000001
+    assert get_payout_delta(0.6, aph, 8, trigger, exit, product, multiplier) < 0.0000001
+    assert get_payout_delta(0.8, aph, 9, trigger, exit, product, multiplier) < 0.0000001
+    assert get_payout_delta(1, aph, 10, trigger, exit, product, multiplier) < 0.0000001
+    assert get_payout_delta(1, aph, 11, trigger, exit, product, multiplier) < 0.0000001
+    assert get_payout_delta(1, aph, 12, trigger, exit, product, multiplier) < 0.0000001
+    assert get_payout_delta(1, aph, 13, trigger, exit, product, multiplier) < 0.0000001
+    assert get_payout_delta(1, aph, 14, trigger, exit, product, multiplier) < 0.0000001
+    assert get_payout_delta(1, aph, 15, trigger, exit, product, multiplier) < 0.0000001
+    assert get_payout_delta(1, aph, 16, trigger, exit, product, multiplier) < 0.0000001
+    assert get_payout_delta(1, aph, 17, trigger, exit, product, multiplier) < 0.0000001
+    assert get_payout_delta(1, aph, 18, trigger, exit, product, multiplier) < 0.0000001
+    assert get_payout_delta(1, aph, 19, trigger, exit, product, multiplier) < 0.0000001
+    assert get_payout_delta(1, aph, 20, trigger, exit, product, multiplier) < 0.0000001
 
 def test_payout_percentage_calculation_single(gifRainProduct: GifRainProduct):
 
     product = gifRainProduct.getContract()
     multiplier = product.getPercentageMultiplier()
 
-    # product example values
-    tsi = 0.9
     trigger = 0.75
-    exit = 0.1
-
-    expected_payout_percentage = 0.091093117 * multiplier
-    aph = 1.9
-    aaay = 1.3
+    exit = 2.0
+    aph = 2
+    aaay = 4
+    expected_payout_percentage = 0.5 * multiplier
 
     payout_percentage = product.calculatePayoutPercentage(
-        tsi * multiplier,
         trigger * multiplier,
         exit * multiplier,
-        aph * multiplier,
-        aaay * multiplier
+        aph,
+        aaay
     )
     assert int(expected_payout_percentage + 0.5) == payout_percentage
 
@@ -632,11 +638,10 @@ def test_payout_percentage_calculation_single(gifRainProduct: GifRainProduct):
 def get_payout_delta(
     expectedPayoutPercentage,
     aph, aaay, 
-    tsi, trigger, exit, 
+    trigger, exit, 
     product, multiplier
 ):
     calculatedPayout = product.calculatePayoutPercentage(
-        tsi * multiplier,
         trigger * multiplier,
         exit * multiplier,
         aph * multiplier,

@@ -1,6 +1,7 @@
 from re import A
 import brownie
 import pytest
+import time
 
 from brownie.network.account import Account
 
@@ -52,7 +53,6 @@ def test_underwrite_after_apply_with_riskpool_empty(
     token = gifRainProduct.getToken()
     assert token.balanceOf(riskpoolWallet) == 0
 
-
     riskpoolBalanceBeforeFunding = token.balanceOf(riskpoolWallet)
     assert 0 == riskpoolBalanceBeforeFunding
     
@@ -61,7 +61,7 @@ def test_underwrite_after_apply_with_riskpool_empty(
     premium = 300
     sumInsured = 2000
 
-        # ensure the riskpool is funded, but too low for insurance
+    # ensure the riskpool is funded, but too low for insurance
     riskpoolFunding = 1000
     fund_riskpool(
         instance, 
@@ -153,20 +153,21 @@ def test_underwrite_invalid_policy_id(
 def prepare_risk(product, insurer):
     print('--- test setup risks -------------------------------------')
 
-    projectId = s2b32('2022.kenya.wfp.rain')
-    uaiId = [s2b32('1234'), s2b32('2345')]
-    cropId = s2b32('mixed')
-    
-    triggerFloat = 0.75
-    exitFloat = 0.1
-    tsiFloat = 0.9
-    aphFloat = [2.0, 1.8]
+    startDate = time.time() + 100
+    endDate = time.time() + 1000
+    placeId = s2b32('10001.saopaulo') # mm 
+    latFloat = -23.550620
+    longFloat = -46.634370
+    triggerFloat = 0.1 # %
+    exitFloat = 1.0 # %
+    aph = 1.0 # mm
     
     multiplier = product.getPercentageMultiplier()
+    coordMultiplier = product.getCoordinatesMultiplier()
+    lat = latFloat * coordMultiplier
+    long = longFloat * coordMultiplier
     trigger = multiplier * triggerFloat
     exit = multiplier * exitFloat
-    tsi = multiplier * tsiFloat
-    aph = [multiplier * aphFloat[0], multiplier * aphFloat[1]]
 
-    tx = product.createRisk(projectId, uaiId[0], cropId, trigger, exit, tsi, aph[0], {'from': insurer})
+    tx = product.createRisk(startDate, endDate, placeId, lat, long, trigger, exit, aph, {'from': insurer})
     return tx.return_value

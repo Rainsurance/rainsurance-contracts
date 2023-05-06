@@ -1,6 +1,7 @@
 from re import A
 import brownie
 import pytest
+import time
 
 from brownie.network.account import Account
 
@@ -94,28 +95,31 @@ def test_process_policies_for_risk(
 
     print('--- test setup risks -------------------------------------')
 
-    projectId = s2b32('2022.kenya.wfp.rain')
-    uaiId = [s2b32('1234'), s2b32('2345')]
-    cropId = s2b32('mixed')
-    
-    triggerFloat = 0.75
-    exitFloat = 0.1
-    tsiFloat = 0.9
-    aphFloat = [2.0, 1.8]
-    
+    startDate = time.time() + 100
+    endDate = time.time() + 1000
+    placeId = [s2b32('10001.saopaulo'), s2b32('10002.paris')] # mm 
+    latFloat = [-23.550620, 48.856613]
+    longFloat = [-46.634370, 2.352222]
+    triggerFloat = 0.1 # %
+    exitFloat = 1.0 # %
+    aphFloat = [5.0, 2.0] # mm
+
     multiplier = product.getPercentageMultiplier()
+    coordMultiplier = product.getCoordinatesMultiplier()
+
     trigger = multiplier * triggerFloat
     exit = multiplier * exitFloat
-    tsi = multiplier * tsiFloat
-    aph = [multiplier * aphFloat[0], multiplier * aphFloat[1]]
+    lat = [coordMultiplier * latFloat[0], coordMultiplier * latFloat[1]]
+    long = [coordMultiplier * longFloat[0], coordMultiplier * longFloat[1]]
+    aph = [aphFloat[0], aphFloat[1]]
 
     tx = [None, None, None, None, None]
-    tx[0] = product.createRisk(projectId, uaiId[0], cropId, trigger, exit, tsi, aph[0], {'from': insurer})
+    tx[0] = product.createRisk(startDate, endDate, placeId[0], lat[0], long[0], trigger, exit, aph[0], {'from': insurer})
 
     riskId = [None, None, None, None, None]
     riskId = [tx[0].return_value]
     print('riskId {}'.format(riskId))
-    assert riskId[0] == product.getRiskId(projectId, uaiId[0], cropId)
+    assert riskId[0] == product.getRiskId(placeId[0], startDate, endDate)
     
 
     print('--- test setup funding customers -------------------------')
@@ -167,10 +171,10 @@ def test_process_policies_for_risk(
     requestEvent = tx[0].events['LogRainRiskDataRequested'][0]
     print('rain requestEvent {}'.format(requestEvent))
     assert requestEvent['requestId'] == requestId[0]
-    assert requestEvent['projectId'] == projectId
     assert requestEvent['riskId'] == riskId[0]
-    assert requestEvent['uaiId'] == uaiId[0]
-    assert requestEvent['cropId'] == cropId
+    assert requestEvent['placeId'] == placeId[0]
+    assert requestEvent['startDate'] == startDate
+    assert requestEvent['endDate'] == endDate
 
 
     print('--- step test oracle response ----------------------------')
@@ -181,17 +185,14 @@ def test_process_policies_for_risk(
     assert risk['responseAt'] == 0
     assert risk['aaay'] == 0
 
-    # create aaay data for oracle response
-    # aaay value selected triggers a payout
-    aaayFloat = 1.1
-    aaay = product.getPercentageMultiplier() * aaayFloat
+    aaay = 1.0
 
     data = [None, None]
     data[0] = oracle.encodeFulfillParameters(
         clRequestEvent['requestId'], 
-        projectId, 
-        uaiId[0], 
-        cropId, 
+        placeId[0],
+        startDate, 
+        endDate, 
         aaay
     )
 
@@ -309,28 +310,31 @@ def test_process_policies_mix_batch_individual_processing(
 
     print('--- test setup risks -------------------------------------')
 
-    projectId = s2b32('2022.kenya.wfp.rain')
-    uaiId = [s2b32('1234'), s2b32('2345')]
-    cropId = s2b32('mixed')
-    
-    triggerFloat = 0.75
-    exitFloat = 0.1
-    tsiFloat = 0.9
-    aphFloat = [2.0, 1.8]
-    
+    startDate = time.time() + 100
+    endDate = time.time() + 1000
+    placeId = [s2b32('10001.saopaulo'), s2b32('10002.paris')] # mm 
+    latFloat = [-23.550620, 48.856613]
+    longFloat = [-46.634370, 2.352222]
+    triggerFloat = 0.1 # %
+    exitFloat = 1.0 # %
+    aphFloat = [5.0, 2.0] # mm
+
     multiplier = product.getPercentageMultiplier()
+    coordMultiplier = product.getCoordinatesMultiplier()
+
     trigger = multiplier * triggerFloat
     exit = multiplier * exitFloat
-    tsi = multiplier * tsiFloat
-    aph = [multiplier * aphFloat[0], multiplier * aphFloat[1]]
+    lat = [coordMultiplier * latFloat[0], coordMultiplier * latFloat[1]]
+    long = [coordMultiplier * longFloat[0], coordMultiplier * longFloat[1]]
+    aph = [aphFloat[0], aphFloat[1]]
 
     tx = [None, None, None, None, None]
-    tx[0] = product.createRisk(projectId, uaiId[0], cropId, trigger, exit, tsi, aph[0], {'from': insurer})
+    tx[0] = product.createRisk(startDate, endDate, placeId[0], lat[0], long[0], trigger, exit, aph[0], {'from': insurer})
 
     riskId = [None, None, None, None, None]
     riskId = [tx[0].return_value]
     print('riskId {}'.format(riskId))
-    assert riskId[0] == product.getRiskId(projectId, uaiId[0], cropId)
+    assert riskId[0] == product.getRiskId(placeId[0], startDate, endDate)
     
 
     print('--- test setup funding customers -------------------------')
@@ -368,7 +372,7 @@ def test_process_policies_mix_batch_individual_processing(
     print('rain requestEvent {}'.format(requestEvent))
 
     # attempt to process policy before oracle response is in
-    with brownie.reverts('ERROR:AYI-032:ORACLE_RESPONSE_MISSING'):
+    with brownie.reverts('ERROR:RAIN-032:ORACLE_RESPONSE_MISSING'):
         product.processPolicy(policyId[3], {'from': insurer})
 
 
@@ -376,17 +380,14 @@ def test_process_policies_mix_batch_individual_processing(
 
     risk = product.getRisk(riskId[0]).dict()
 
-    # create aaay data for oracle response
-    # aaay value selected triggers a payout
-    aaayFloat = 1.1
-    aaay = product.getPercentageMultiplier() * aaayFloat
+    aaay = 1.0
 
     data = [None, None]
     data[0] = oracle.encodeFulfillParameters(
         clRequestEvent['requestId'], 
-        projectId, 
-        uaiId[0], 
-        cropId, 
+        placeId[0],
+        startDate, 
+        endDate, 
         aaay
     )
 

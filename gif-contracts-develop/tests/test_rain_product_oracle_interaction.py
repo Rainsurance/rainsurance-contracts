@@ -1,5 +1,6 @@
 import brownie
 import pytest
+import time
 
 from brownie.network.account import Account
 
@@ -56,23 +57,26 @@ def test_trigger_and_cancel_oracle_requests(
         investor, 
         token, 
         riskpoolFunding)
-
-    projectId = s2b32('2022.kenya.wfp.rain')
-    uaiId = s2b32('1234')
-    cropId = s2b32('mixed')
     
-    triggerFloat = 0.75
-    exitFloat = 0.1
-    tsiFloat = 0.9
-    aphFloat = 2.0
+    startDate = time.time() + 100
+    endDate = time.time() + 1000
+    placeId = s2b32('10001.saopaulo')
+    latFloat = -23.550620
+    longFloat = -46.634370
+    triggerFloat = 0.1 # %
+    exitFloat = 1.0 # %
+    aphFloat = 3.0 # mm
     
     multiplier = product.getPercentageMultiplier()
+    coordMultiplier = product.getCoordinatesMultiplier()
+
     trigger = multiplier * triggerFloat
     exit = multiplier * exitFloat
-    tsi = multiplier * tsiFloat
-    aph = multiplier * aphFloat
+    lat = coordMultiplier * latFloat
+    long = coordMultiplier * longFloat
+    aph = aphFloat
     
-    tx = product.createRisk(projectId, uaiId, cropId, trigger, exit, tsi, aph, {'from': insurer})
+    tx = product.createRisk(startDate, endDate, placeId, lat, long, trigger, exit, aph, {'from': insurer})
     riskId = tx.return_value
 
     customerFunding = 500
@@ -100,16 +104,13 @@ def test_trigger_and_cancel_oracle_requests(
 
     risk = product.getRisk(riskId).dict()
 
-    # create aaay data for oracle response
-    # aaay value selected triggers a payout
-    aaayFloat = 1.1
-    aaay = product.getPercentageMultiplier() * aaayFloat
+    aaay = 1.0
 
     data = oracle.encodeFulfillParameters(
-        clRequestEvent['requestId'],
-        projectId, 
-        uaiId, 
-        cropId, 
+        clRequestEvent['requestId'], 
+        placeId,
+        startDate, 
+        endDate, 
         aaay
     )
 
@@ -142,9 +143,9 @@ def test_trigger_and_cancel_oracle_requests(
 
     data2 = oracle.encodeFulfillParameters(
         clRequestEvent2['requestId'],
-        projectId, 
-        uaiId, 
-        cropId, 
+        placeId,
+        startDate, 
+        endDate, 
         aaay
     )
 
@@ -172,7 +173,7 @@ def test_trigger_and_cancel_oracle_requests(
     assert risk['aaay'] == aaay
 
     # check if triggering the same risk twice works
-    with brownie.reverts('ERROR:AYI-011:ORACLE_ALREADY_RESPONDED'):
+    with brownie.reverts('ERROR:RAIN-011:ORACLE_ALREADY_RESPONDED'):
         product.triggerOracle(processId, {'from': insurer})
 
 
@@ -206,23 +207,26 @@ def test_oracle_responds_with_invalid_aaay(
         investor, 
         token, 
         riskpoolFunding)
-
-    projectId = s2b32('2022.kenya.wfp.rain')
-    uaiId = s2b32('1234')
-    cropId = s2b32('mixed')
     
-    triggerFloat = 0.75
-    exitFloat = 0.1
-    tsiFloat = 0.9
-    aphFloat = 2.0
+    startDate = time.time() + 100
+    endDate = time.time() + 1000
+    placeId = s2b32('10001.saopaulo')
+    latFloat = -23.550620
+    longFloat = -46.634370
+    triggerFloat = 0.1 # %
+    exitFloat = 1.0 # %
+    aphFloat = 3.0 # mm
     
     multiplier = product.getPercentageMultiplier()
+    coordMultiplier = product.getCoordinatesMultiplier()
+
     trigger = multiplier * triggerFloat
     exit = multiplier * exitFloat
-    tsi = multiplier * tsiFloat
-    aph = multiplier * aphFloat
+    lat = coordMultiplier * latFloat
+    long = coordMultiplier * longFloat
+    aph = aphFloat
     
-    tx = product.createRisk(projectId, uaiId, cropId, trigger, exit, tsi, aph, {'from': insurer})
+    tx = product.createRisk(startDate, endDate, placeId, lat, long, trigger, exit, aph, {'from': insurer})
     riskId = tx.return_value
 
     customerFunding = 500
@@ -257,14 +261,13 @@ def test_oracle_responds_with_invalid_aaay(
 
     # create oracle response with aaay value out of range
     # aaay value selected triggers a payout
-    aaayFloat = 17.9 
-    aaay = product.getPercentageMultiplier() * aaayFloat
+    aaay = 2000
 
     data = oracle.encodeFulfillParameters(
-        clRequestEvent['requestId'],
-        projectId, 
-        uaiId, 
-        cropId, 
+        clRequestEvent['requestId'], 
+        placeId,
+        startDate, 
+        endDate, 
         aaay
     )
 
@@ -301,14 +304,13 @@ def test_oracle_responds_with_invalid_aaay(
     assert risk['requestId'] == 1
     assert risk['responseAt'] == 0
 
-    validAaayFloat = 10.0 
-    validAaay = product.getPercentageMultiplier() * validAaayFloat
+    validAaay = 10.0
 
     validData = oracle.encodeFulfillParameters(
-        clRequestEvent['requestId'],
-        projectId, 
-        uaiId, 
-        cropId, 
+        clRequestEvent['requestId'], 
+        placeId,
+        startDate, 
+        endDate, 
         validAaay
     )
 
@@ -334,7 +336,7 @@ def test_oracle_responds_with_invalid_aaay(
 
     print('--- attempt to repeat trigger once more ----------------------------')
 
-    with brownie.reverts('ERROR:AYI-011:ORACLE_ALREADY_RESPONDED'):
+    with brownie.reverts('ERROR:RAIN-011:ORACLE_ALREADY_RESPONDED'):
         product.triggerOracle(processId, {'from': insurer})
 
 
