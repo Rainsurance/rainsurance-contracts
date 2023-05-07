@@ -8,11 +8,10 @@ from brownie.network.account import Account
 from brownie import (
     interface,
     RainProduct,
-    BundleToken
 )
 
-from scripts.rain_product import (
-    GifRainProduct
+from scripts.product import (
+    GifProduct
 )
 
 from scripts.setup import (
@@ -32,10 +31,10 @@ def isolation(fn_isolation):
 # underwrite the policy after the apply_for_policy has failed due to low riskpool balance
 def test_risk_creation_happy_case(
     instance: GifInstance, 
-    gifRainProduct: GifRainProduct,
+    gifProduct: GifProduct,
     insurer,
 ):
-    product = gifRainProduct.getContract()
+    product = gifProduct.getContract()
     multiplier = product.getPercentageMultiplier()
     coordMultiplier = product.getCoordinatesMultiplier()
 
@@ -68,10 +67,10 @@ def test_risk_creation_happy_case(
 
 def test_risk_creation_validation(
     instance: GifInstance, 
-    gifRainProduct: GifRainProduct,
+    gifProduct: GifProduct,
     insurer,
 ):
-    product = gifRainProduct.getContract()
+    product = gifProduct.getContract()
     multiplier = product.getPercentageMultiplier()
 
     startDate = time.time() + 100
@@ -143,10 +142,10 @@ def test_risk_creation_validation(
 
 def test_risk_adjustment_happy_case(
     instance: GifInstance, 
-    gifRainProduct: GifRainProduct,
+    gifProduct: GifProduct,
     insurer,
 ):
-    product = gifRainProduct.getContract()
+    product = gifProduct.getContract()
     multiplier = product.getPercentageMultiplier()
     coordMultiplier = product.getCoordinatesMultiplier()
 
@@ -182,7 +181,7 @@ def test_risk_adjustment_happy_case(
 def test_risk_adjustment_with_policy(
     instance: GifInstance, 
     instanceOperator, 
-    gifRainProduct: GifRainProduct,
+    gifProduct: GifProduct,
     riskpoolWallet,
     riskpoolKeeper: Account,    
     investor,
@@ -191,11 +190,11 @@ def test_risk_adjustment_with_policy(
 ):
     instanceService = instance.getInstanceService()
 
-    product = gifRainProduct.getContract()
-    oracle = gifRainProduct.getOracle().getContract()
-    riskpool = gifRainProduct.getRiskpool().getContract()
+    product = gifProduct.getContract()
+    oracle = gifProduct.getOracle().getContract()
+    riskpool = gifProduct.getRiskpool().getContract()
 
-    token = gifRainProduct.getToken()
+    token = gifProduct.getToken()
     riskpoolFunding = 200000
     fund_riskpool(
         instance, 

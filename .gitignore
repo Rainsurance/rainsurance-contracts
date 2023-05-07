@@ -14,3 +14,5 @@ tmp/
 .vscode/launch.json
 
 etherisc*.tgz
+
+gif_instance_address.txt

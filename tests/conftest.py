@@ -4,37 +4,13 @@ import web3
 from typing import Dict
 
 from brownie import (
+    interface,
     Wei,
     Contract, 
-    CoreProxy,
-    BundleToken,
-    RiskpoolToken,
-    AccessController,
-    BundleController,
-    BundleToken,
-    RegistryController,
-    LicenseController,
-    PolicyController,
-    PoolController,
-    ProductService,
-    OracleService,
-    RiskpoolService,
-    ComponentOwnerService,
-    PolicyDefaultFlow,
-    InstanceOperatorService,
-    InstanceService,
-    TestCoin,
-    TestCoinAlternativeImplementation,
-    TestCoinX,
-    TestRiskpool,
-    TestOracle,
-    TestProduct,
-    TestRiskpool,
-    TestRegistryControllerUpdated,
-    TestRegistryCompromisedController,
+    Usdc,
     RainProduct,
     RainOracle,
-    RainRiskpool,
+    RainRiskpool
 )
 
 from brownie.network import accounts
@@ -42,49 +18,58 @@ from brownie.network.account import Account
 from brownie.network.state import Chain
 
 from scripts.const import (
-    GIF_RELEASE,
-    ACCOUNTS_MNEMONIC, 
+    ACCOUNTS_MNEMONIC,
+    INSTANCE_OPERATOR,
+    INSTANCE_WALLET,
+    ORACLE_PROVIDER,
+    CHAINLINK_NODE_OPERATOR,
+    RISKPOOL_KEEPER,
+    RISKPOOL_WALLET,
+    INVESTOR,
+    PRODUCT_OWNER,
+    INSURER,
+    CUSTOMER1,
+    CUSTOMER2,
+    REGISTRY_OWNER,
+    STAKER,
+    OUTSIDER,
+    GIF_ACTOR
 )
 
 from scripts.instance import (
+    GifRegistry,
     GifInstance,
 )
 
 from scripts.product import (
-    GifTestRiskpool,
-    GifTestOracle,
-    GifTestProduct,
-)
-
-from scripts.rain_product import (
-    GifRainProduct,
-    GifRainOracle,
-    GifRainRiskpool,
-    GifRainProductComplete,
+    GifRiskpool,
+    GifOracle,
+    GifProduct,
+    GifProductComplete,
 )
 
 from scripts.util import (
     get_account,
-    encode_function_data,
-    s2h,
-    s2b32,
-    deployGifModule,
-    deployGifModuleV2,
-    deployGifService,
+    get_package,
 )
 
-PUBLISH_SOURCE = False
+PRODUCT_BASE_NAME = 'RAIN'
 
-# @pytest.fixture(scope="function", autouse=True)
-# def isolate(fn_isolation):
-#     # perform a chain rewind after completing each test, to ensure proper isolation
-#     # https://eth-brownie.readthedocs.io/en/v1.10.3/tests-pytest-intro.html#isolation-fixtures
-#     pass
+CONTRACT_CLASS_TOKEN = Usdc
+CONTRACT_CLASS_PRODUCT = RainProduct
+CONTRACT_CLASS_ORACLE = RainOracle
+CONTRACT_CLASS_RISKPOOL = RainRiskpool
+
+INITIAL_ACCOUNT_FUNDING = '1 ether'
 
 # -- comments below may be used /w 'brownie console'
 # mnemonic = 'candy maple cake sugar pudding cream honey rich smooth crumble sweet treat'
 # owner = accounts.from_mnemonic(mnemonic, count=1, offset=0)
-def get_filled_account(accounts, account_no, funding) -> Account:
+def get_filled_account(
+    accounts,
+    account_no,
+    funding=INITIAL_ACCOUNT_FUNDING
+) -> Account:
     owner = get_account(ACCOUNTS_MNEMONIC, account_no)
     accounts[account_no].transfer(owner, funding)
     return owner
@@ -103,210 +88,118 @@ def run_around_tests():
         # dummy_account = get_account(ACCOUNTS_MNEMONIC, 999)
         # execute_simple_incrementer_trx(dummy_account)
 
-# DEPRECATED: use erc20Token instead
-@pytest.fixture(scope="module")
-def testCoin(erc20Token) -> TestCoin:
-    return erc20Token
+#=== access to gif-contracts contract classes  =======================#
 
-# DEPRECATED: use instanceOperator instead
 @pytest.fixture(scope="module")
-def owner(instanceOperator) -> Account:
-    return instanceOperator
+def gifi(): return get_package('gif-interface')
 
-# DEPRECATED: use instanceWallet instead
 @pytest.fixture(scope="module")
-def feeOwner(instanceWallet) -> Account:
-    return instanceWallet
+def gif(): return get_package('gif-contracts')
 
-# DEPRECATED: use riskpoolWallet instead
-@pytest.fixture(scope="module")
-def capitalOwner(riskpoolWallet) -> Account:
-    return riskpoolWallet
+#=== actor account fixtures  ===========================================#
 
 @pytest.fixture(scope="module")
 def instanceOperator(accounts) -> Account:
-    return get_filled_account(accounts, 0, "1 ether")
+    return get_filled_account(accounts, GIF_ACTOR[INSTANCE_OPERATOR])
 
 @pytest.fixture(scope="module")
 def instanceWallet(accounts) -> Account:
-    return get_filled_account(accounts, 1, "1 ether")
-
-@pytest.fixture(scope="module")
-def oracleProvider(accounts) -> Account:
-    return get_filled_account(accounts, 2, "1 ether")
-
-@pytest.fixture(scope="module")
-def chainlinkNodeOperator(accounts) -> Account:
-    return get_filled_account(accounts, 3, "1 ether")
+    return get_filled_account(accounts, GIF_ACTOR[INSTANCE_WALLET])
 
 @pytest.fixture(scope="module")
 def riskpoolKeeper(accounts) -> Account:
-    return get_filled_account(accounts, 4, "1 ether")
+    return get_filled_account(accounts, GIF_ACTOR[RISKPOOL_KEEPER])
 
 @pytest.fixture(scope="module")
 def riskpoolWallet(accounts) -> Account:
-    return get_filled_account(accounts, 5, "1 ether")
+    return get_filled_account(accounts, GIF_ACTOR[RISKPOOL_WALLET])
 
 @pytest.fixture(scope="module")
 def investor(accounts) -> Account:
-    return get_filled_account(accounts, 6, "1 ether")
+    return get_filled_account(accounts, GIF_ACTOR[INVESTOR])
 
 @pytest.fixture(scope="module")
 def productOwner(accounts) -> Account:
-    return get_filled_account(accounts, 7, "1 ether")
+    return get_filled_account(accounts, GIF_ACTOR[PRODUCT_OWNER])
 
 @pytest.fixture(scope="module")
 def insurer(accounts) -> Account:
-    return get_filled_account(accounts, 8, "1 ether")
+    return get_filled_account(accounts, GIF_ACTOR[INSURER])
+
+@pytest.fixture(scope="module")
+def oracleProvider(accounts) -> Account:
+    return get_filled_account(accounts, GIF_ACTOR[ORACLE_PROVIDER])
+
+@pytest.fixture(scope="module")
+def chainlinkNodeOperator(accounts) -> Account:
+    return get_filled_account(accounts, GIF_ACTOR[CHAINLINK_NODE_OPERATOR])
 
 @pytest.fixture(scope="module")
 def customer(accounts) -> Account:
-    return get_filled_account(accounts, 9, "1 ether")
+    return get_filled_account(accounts, GIF_ACTOR[CUSTOMER1])
 
 @pytest.fixture(scope="module")
 def customer2(accounts) -> Account:
-    return get_filled_account(accounts, 10, "1 ether")
+    return get_filled_account(accounts, GIF_ACTOR[CUSTOMER2])
 
 @pytest.fixture(scope="module")
 def theOutsider(accounts) -> Account:
-    return get_filled_account(accounts, 19, "1 ether")
+    return get_filled_account(accounts, GIF_ACTOR[OUTSIDER])
+
+#=== gif instance fixtures ====================================================#
 
 @pytest.fixture(scope="module")
-def instance(owner, feeOwner) -> GifInstance:
-    return GifInstance(owner, feeOwner)
+def registry(instanceOperator) -> GifRegistry: return GifRegistry(instanceOperator, None)
 
 @pytest.fixture(scope="module")
-def instanceNoInstanceWallet(owner, feeOwner) -> GifInstance:
-    return GifInstance(owner, feeOwner, setInstanceWallet=False)
+def instance(instanceOperator, instanceWallet) -> GifInstance: return GifInstance(instanceOperator, instanceWallet)
 
 @pytest.fixture(scope="module")
-def gifTestOracle(instance: GifInstance, oracleProvider: Account) -> GifTestOracle:
-    return GifTestOracle(instance, oracleProvider)
+def instanceService(instance): return instance.getInstanceService()
+
+#=== stable coin fixtures ============================================#
 
 @pytest.fixture(scope="module")
-def gifTestRiskpool(instance: GifInstance, riskpoolKeeper: Account, testCoin: Account, capitalOwner: Account, owner: Account) -> GifTestRiskpool:
-    capitalization = 10**18
-    return GifTestRiskpool(instance, riskpoolKeeper, testCoin, capitalOwner, capitalization)
+def token(instanceOperator) -> CONTRACT_CLASS_TOKEN: return CONTRACT_CLASS_TOKEN.deploy({'from': instanceOperator})
+
+#=== rain contracts fixtures ========================================#
 
 @pytest.fixture(scope="module")
-def gifTestProduct(
-    instance: GifInstance, 
-    testCoin,
-    capitalOwner: Account, 
-    productOwner: Account,
-    gifTestOracle: GifTestOracle,
-    gifTestRiskpool: GifTestRiskpool,
-    owner
-) -> GifTestProduct:
-    return GifTestProduct(
-        instance, 
-        testCoin,
-        capitalOwner,
-        productOwner,
-        gifTestOracle,
-        gifTestRiskpool)
-
-@pytest.fixture(scope="module")
-def gifRainDeploy(
+def gifProductDeploy(
     instance: GifInstance, 
     productOwner: Account, 
-    insurer: Account, 
-    oracleProvider: Account, 
-    chainlinkNodeOperator: Account, 
-    riskpoolKeeper: Account, 
+    insurer: Account,
     investor: Account, 
-    testCoin,
+    token: CONTRACT_CLASS_TOKEN,
+    oracleProvider: Account, 
+    chainlinkNodeOperator: Account,
+    riskpoolKeeper: Account, 
     riskpoolWallet: Account
-) -> GifRainProductComplete:
-    return GifRainProductComplete(
+) -> GifProductComplete:
+    return GifProductComplete(
         instance, 
-        productOwner, 
-        insurer, 
-        oracleProvider, 
-        chainlinkNodeOperator, 
+        CONTRACT_CLASS_PRODUCT,
+        CONTRACT_CLASS_ORACLE,
+        CONTRACT_CLASS_RISKPOOL,
+        productOwner,
+        insurer,
+        oracleProvider,
+        chainlinkNodeOperator,
         riskpoolKeeper, 
-        investor, 
-        testCoin, 
-        riskpoolWallet)
+        riskpoolWallet,
+        investor,
+        token,
+        name=PRODUCT_BASE_NAME,
+        publish_source=False)
 
 @pytest.fixture(scope="module")
-def gifRainProduct(gifRainDeploy) -> GifRainProduct:
-    return gifRainDeploy.getProduct()
+def gifProduct(gifProductDeploy) -> GifProduct: return gifProductDeploy.getProduct()
 
 @pytest.fixture(scope="module")
-def gifRainOracle(gifRainDeploy) -> GifRainOracle:
-    return gifRainDeploy.getOracle()
+def product(gifProduct) -> CONTRACT_CLASS_PRODUCT: return gifProduct.getContract()
 
 @pytest.fixture(scope="module")
-def gifRainRiskpool(gifRainDeploy) -> GifRainRiskpool:
-    return gifRainDeploy.getRiskpool()
+def oracle(gifProduct) -> CONTRACT_CLASS_ORACLE: return gifProduct.getOracle().getContract()
 
 @pytest.fixture(scope="module")
-def testProduct(gifTestProduct: GifTestProduct):
-    return gifTestProduct.getContract()
-
-@pytest.fixture(scope="module")
-def registryController(RegistryController, owner) -> RegistryController:
-    return RegistryController.deploy({'from': owner})
-
-@pytest.fixture(scope="module")
-def registryControllerV2Test(TestRegistryControllerUpdated, owner) -> TestRegistryControllerUpdated:
-    return TestRegistryControllerUpdated.deploy({'from': owner})
-
-@pytest.fixture(scope="module")
-def registryCompromisedControllerV2Test(TestRegistryCompromisedController, customer) -> TestRegistryCompromisedController:
-    return TestRegistryCompromisedController.deploy({'from': customer})
-
-@pytest.fixture(scope="module")
-def registry(registryController, owner) -> RegistryController:
-    encoded_initializer = encode_function_data(
-        s2b32(GIF_RELEASE),
-        initializer=registryController.initializeRegistry)
-
-    proxy = CoreProxy.deploy(
-        registryController.address, 
-        encoded_initializer, 
-        {'from': owner})
-
-    registry = contractFromAddress(RegistryController, proxy.address)
-    registry.register(s2b32("Registry"), proxy.address, {'from': owner})
-    registry.register(s2b32("RegistryController"), registryController.address, {'from': owner})
-
-    return registry
-
-@pytest.fixture(scope="module")
-def erc20Token(instanceOperator) -> TestCoin:
-    return TestCoin.deploy({'from': instanceOperator})
-
-@pytest.fixture(scope="module")
-def erc20TokenAlternative(instanceOperator) -> TestCoin:
-    return TestCoinAlternativeImplementation.deploy({'from': instanceOperator})
-
-@pytest.fixture(scope="module")
-def testCoinX(owner) -> TestCoinX:
-    return TestCoinX.deploy({'from': owner})
-
-@pytest.fixture(scope="module")
-def bundleToken(owner) -> BundleToken:
-    return BundleToken.deploy({'from': owner})
-
-@pytest.fixture(scope="module")
-def testCoinSetup(testCoin, owner, customer) -> TestCoin:
-    testCoin.transfer(customer, 10**6, {'from': owner})
-    return testCoin
-
-@pytest.fixture(scope="module")
-def chain() -> Chain:
-    return Chain()
-
-
-def contractFromAddress(contractClass, contractAddress):
-    return Contract.from_abi(contractClass._name, contractAddress, contractClass.abi)
-
-def encode_function_data(*args, initializer=None):
-    if not len(args): args = b''
-
-    if initializer:
-        return initializer.encode_input(*args)
-
-    return b''
+def riskpool(gifProduct) -> CONTRACT_CLASS_RISKPOOL: return gifProduct.getRiskpool().getContract()

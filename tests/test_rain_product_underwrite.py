@@ -8,11 +8,10 @@ from brownie.network.account import Account
 from brownie import (
     interface,
     RainProduct,
-    BundleToken
 )
 
-from scripts.rain_product import (
-    GifRainProduct
+from scripts.product import (
+    GifProduct
 )
 
 from scripts.setup import (
@@ -33,7 +32,7 @@ def isolation(fn_isolation):
 def test_underwrite_after_apply_with_riskpool_empty(
     instance: GifInstance, 
     instanceOperator, 
-    gifRainProduct: GifRainProduct,
+    gifProduct: GifProduct,
     riskpoolWallet,
     riskpoolKeeper: Account,    
     investor,
@@ -42,15 +41,15 @@ def test_underwrite_after_apply_with_riskpool_empty(
 ):
     instanceService = instance.getInstanceService()
 
-    product = gifRainProduct.getContract()
-    oracle = gifRainProduct.getOracle().getContract()
-    riskpool = gifRainProduct.getRiskpool().getContract()
+    product = gifProduct.getContract()
+    oracle = gifProduct.getOracle().getContract()
+    riskpool = gifProduct.getRiskpool().getContract()
 
-    clOperator = gifRainProduct.getOracle().getClOperator()
+    clOperator = gifProduct.getOracle().getClOperator()
 
     print('--- test setup underfunded riskpool --------------------------')
 
-    token = gifRainProduct.getToken()
+    token = gifProduct.getToken()
     assert token.balanceOf(riskpoolWallet) == 0
 
     riskpoolBalanceBeforeFunding = token.balanceOf(riskpoolWallet)
@@ -140,10 +139,10 @@ def test_underwrite_after_apply_with_riskpool_empty(
     assert 2 == application[0] # ApplicationState.Underwritten
 
 def test_underwrite_invalid_policy_id(
-    gifRainProduct: GifRainProduct,
+    gifProduct: GifProduct,
     insurer,
 ):
-    product = gifRainProduct.getContract()
+    product = gifProduct.getContract()
 
     with brownie.reverts("ERROR:POC-101:APPLICATION_DOES_NOT_EXIST"):
         tx = product.underwrite(s2b32('does_not_exist'), {'from': insurer})

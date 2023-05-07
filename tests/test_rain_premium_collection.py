@@ -8,16 +8,20 @@ from brownie.network.account import Account
 from brownie import (
     interface,
     RainProduct,
-    BundleToken
 )
 
-from scripts.rain_product import (
-    GifRainProduct
+from scripts.product import (
+    GifProduct
 )
 
 from scripts.setup import (
     fund_riskpool,
     fund_customer,
+)
+
+from scripts.product import (
+    CAPITAL_FEE_FIXED_DEFAULT,
+    CAPITAL_FEE_FRACTIONAL_DEFAULT,
 )
 
 from scripts.instance import GifInstance
@@ -32,7 +36,7 @@ def isolation(fn_isolation):
 def test_late_premium_payment(
     instance: GifInstance, 
     instanceOperator, 
-    gifRainProduct: GifRainProduct,
+    gifProduct: GifProduct,
     riskpoolWallet,
     investor,
     productOwner,
@@ -42,16 +46,16 @@ def test_late_premium_payment(
 ):
     instanceService = instance.getInstanceService()
 
-    product = gifRainProduct.getContract()
-    oracle = gifRainProduct.getOracle().getContract()
-    riskpool = gifRainProduct.getRiskpool().getContract()
-    erc20Token = gifRainProduct.getToken()
+    product = gifProduct.getContract()
+    oracle = gifProduct.getOracle().getContract()
+    riskpool = gifProduct.getRiskpool().getContract()
+    erc20Token = gifProduct.getToken()
     
     riskpoolFunding = 200000
     fund_riskpool(instance, instanceOperator, riskpoolWallet, riskpool, investor, erc20Token, riskpoolFunding)
 
     # check riskpool funds and book keeping after funding
-    riskpoolExpectedBalance = 0.95 * riskpoolFunding - 42
+    riskpoolExpectedBalance = (1 - CAPITAL_FEE_FRACTIONAL_DEFAULT) * riskpoolFunding - CAPITAL_FEE_FIXED_DEFAULT
     assert riskpool.getBalance() == riskpoolExpectedBalance
     assert riskpool.getBalance() == erc20Token.balanceOf(riskpoolWallet)
 
@@ -110,7 +114,7 @@ def test_late_premium_payment(
 def test_partial_premium_payment_attempt(
     instance: GifInstance, 
     instanceOperator, 
-    gifRainProduct: GifRainProduct,
+    gifProduct: GifProduct,
     riskpoolWallet,
     investor,
     productOwner,
@@ -120,16 +124,16 @@ def test_partial_premium_payment_attempt(
 ):
     instanceService = instance.getInstanceService()
 
-    product = gifRainProduct.getContract()
-    oracle = gifRainProduct.getOracle().getContract()
-    riskpool = gifRainProduct.getRiskpool().getContract()
-    erc20Token = gifRainProduct.getToken()
+    product = gifProduct.getContract()
+    oracle = gifProduct.getOracle().getContract()
+    riskpool = gifProduct.getRiskpool().getContract()
+    erc20Token = gifProduct.getToken()
     
     riskpoolFunding = 200000
     fund_riskpool(instance, instanceOperator, riskpoolWallet, riskpool, investor, erc20Token, riskpoolFunding)
 
     # check riskpool funds and book keeping after funding
-    riskpoolExpectedBalance = 0.95 * riskpoolFunding - 42
+    riskpoolExpectedBalance = (1 - CAPITAL_FEE_FRACTIONAL_DEFAULT) * riskpoolFunding - CAPITAL_FEE_FIXED_DEFAULT
     assert riskpool.getBalance() == riskpoolExpectedBalance
     assert riskpool.getBalance() == erc20Token.balanceOf(riskpoolWallet)
 
@@ -158,7 +162,7 @@ def test_partial_premium_payment_attempt(
 def test_premium_payment_by_subsidies(
     instance: GifInstance, 
     instanceOperator, 
-    gifRainProduct: GifRainProduct,
+    gifProduct: GifProduct,
     riskpoolWallet,
     investor,
     productOwner,
@@ -168,16 +172,16 @@ def test_premium_payment_by_subsidies(
 ):
     instanceService = instance.getInstanceService()
 
-    product = gifRainProduct.getContract()
-    oracle = gifRainProduct.getOracle().getContract()
-    riskpool = gifRainProduct.getRiskpool().getContract()
-    erc20Token = gifRainProduct.getToken()
+    product = gifProduct.getContract()
+    oracle = gifProduct.getOracle().getContract()
+    riskpool = gifProduct.getRiskpool().getContract()
+    erc20Token = gifProduct.getToken()
     
     riskpoolFunding = 200000
     fund_riskpool(instance, instanceOperator, riskpoolWallet, riskpool, investor, erc20Token, riskpoolFunding)
 
     # check riskpool funds and book keeping after funding
-    riskpoolExpectedBalance = 0.95 * riskpoolFunding - 42
+    riskpoolExpectedBalance = (1 - CAPITAL_FEE_FRACTIONAL_DEFAULT) * riskpoolFunding - CAPITAL_FEE_FIXED_DEFAULT
     assert riskpool.getBalance() == riskpoolExpectedBalance
     assert riskpool.getBalance() == erc20Token.balanceOf(riskpoolWallet)
 

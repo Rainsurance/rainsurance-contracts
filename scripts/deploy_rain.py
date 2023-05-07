@@ -16,7 +16,7 @@ from brownie import (
     RainRiskpool
 )
 
-from scripts.rain_product import GifRainProductComplete
+from scripts.product import GifProductComplete
 from scripts.instance import GifInstance
 from scripts.util import contract_from_address, s2b32
 
@@ -271,7 +271,7 @@ def deploy(
     componentOwnerService = instance.getComponentOwnerService()
 
     print('====== deploy rain product ======')
-    rainDeploy = GifRainProductComplete(instance, productOwner, insurer, oracleProvider, chainlinkNodeOperator, riskpoolKeeper, investor, erc20Token, riskpoolWallet, publishSource=publishSource)
+    rainDeploy = GifProductComplete(instance, productOwner, insurer, oracleProvider, chainlinkNodeOperator, riskpoolKeeper, investor, erc20Token, riskpoolWallet, publishSource=publishSource)
 
     # assess balances at beginning of deploy
     balances_after_deploy = _get_balances(stakeholders_accounts)

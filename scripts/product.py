@@ -1,229 +1,313 @@
-from web3 import Web3
+import time
 
-from brownie.convert import to_bytes
-from brownie.network import accounts
 from brownie.network.account import Account
 
-# pylint: disable-msg=E0611
 from brownie import (
+    interface,
     Wei,
     Contract, 
-    PolicyController,
-    OracleService,
-    ComponentOwnerService,
-    InstanceOperatorService,
-    TestRiskpool,
-    TestOracle,
-    TestProduct,
+    ChainlinkOperator, 
+    ChainlinkToken, 
 )
-
-from scripts.const import (
-    RISKPOOL_NAME,
-    ORACLE_INPUT_FORMAT,
-    ORACLE_OUTPUT_FORMAT,
-    ORACLE_NAME,
-    PRODUCT_NAME,
-)
-
 from scripts.util import (
-    get_account,
-    encode_function_data,
-    # s2h,
-    s2b32,
-    deployGifModule,
-    deployGifService,
+    s2b,
+    s2b32
 )
+from scripts.instance import GifInstance
 
-from scripts.instance import (
-    GifInstance,
-)
+# product contract names
+NAME_DEFAULT = 'Protection'
 
+# fees
 
-class GifTestRiskpool(object):
+# 10% fee on premium paid
+PREMIUM_FEE_FIXED_DEFAULT = 0
+PREMIUM_FEE_FRACTIONAL_DEFAULT = 0.1
+
+# 5% fee for staked capital
+CAPITAL_FEE_FIXED_DEFAULT = 0
+CAPITAL_FEE_FRACTIONAL_DEFAULT = 0.05
+
+# riskpool risk bundle setup
+MAX_ACTIVE_RISKPOOL_BUNDLES_DEFAULT = 10
+
+class GifOracle(object):
 
     def __init__(self, 
         instance: GifInstance, 
-        riskpoolKeeper: Account, 
-        erc20Token: Account,
-        riskpoolWallet: Account, 
-        collateralization:int,
-        name=RISKPOOL_NAME, 
-        publishSource=False,
-        setRiskpoolWallet=True
+        oracleContractClass,
+        oracleProvider: Account,
+        chainlinkNodeOperator: Account,
+        name,
+        publish_source
     ):
         instanceService = instance.getInstanceService()
-        operatorService = instance.getInstanceOperatorService()
+        instanceOperatorService = instance.getInstanceOperatorService()
         componentOwnerService = instance.getComponentOwnerService()
-        riskpoolService = instance.getRiskpoolService()
 
-        # 1) add role to keeper
-        keeperRole = instanceService.getRiskpoolKeeperRole()
-        operatorService.grantRole(
-            keeperRole, 
-            riskpoolKeeper, 
-            {'from': instance.getOwner()})
+        print('------ setting up oracle ------')
 
-        # 2) keeper deploys riskpool
-        if not setRiskpoolWallet:
-            name += '_NO_WALLET'
-        
-        self.riskpool = TestRiskpool.deploy(
-            s2b32(name),
-            collateralization,
-            erc20Token,
-            riskpoolWallet,
-            instance.getRegistry(),
-            {'from': riskpoolKeeper},
-            publish_source=publishSource)
-
-        # 3) riskpool keeperproposes oracle to instance
-        componentOwnerService.propose(
-            self.riskpool,
-            {'from': riskpoolKeeper})
-
-        # 4) instance operator approves riskpool
-        operatorService.approve(
-            self.riskpool.getId(),
-            {'from': instance.getOwner()})
-
-        # 5) instance operator assigns riskpool wallet
-        if setRiskpoolWallet:
-            operatorService.setRiskpoolWallet(
-                self.riskpool.getId(),
-                riskpoolWallet,
-                {'from': instance.getOwner()})
-
-        # 6) setup capital fees
-        fixedFee = 42
-        fractionalFee = instanceService.getFeeFractionFullUnit() / 20 # corresponds to 5%
-        feeSpec = operatorService.createFeeSpecification(
-            self.riskpool.getId(),
-            fixedFee,
-            fractionalFee,
-            b'',
-            {'from': instance.getOwner()}) 
-
-        operatorService.setCapitalFees(
-            feeSpec,
-            {'from': instance.getOwner()}) 
-    
-    def getId(self) -> int:
-        return self.riskpool.getId()
-    
-    def getContract(self) -> TestRiskpool:
-        return self.riskpool
-
-
-class GifTestOracle(object):
-
-    def __init__(self, 
-        instance: GifInstance, 
-        oracleOwner: Account, 
-        name=ORACLE_NAME, 
-        publishSource=False
-    ):
-        instanceService = instance.getInstanceService()
-        operatorService = instance.getInstanceOperatorService()
-        componentOwnerService = instance.getComponentOwnerService()
-        oracleService = instance.getOracleService()
-
-        # 1) add oracle provider role to owner
         providerRole = instanceService.getOracleProviderRole()
-        operatorService.grantRole(
-            providerRole, 
-            oracleOwner, 
-            {'from': instance.getOwner()})
+        print('1) grant oracle provider role {} to oracle provider {}'.format(
+            providerRole, oracleProvider))
 
-        # 2) oracle provider creates oracle
-        self.oracle = TestOracle.deploy(
+        instanceOperatorService.grantRole(
+            providerRole, 
+            oracleProvider, 
+            {'from': instance.getOwner()})
+        
+        clTokenOwner = oracleProvider
+        clTokenSupply = 10**20
+        print('2) deploy chainlink (mock) token with token owner (=oracle provider) {} by oracle provider {}'.format(
+            clTokenOwner, oracleProvider))
+        
+        self.chainlinkToken = ChainlinkToken.deploy(
+            clTokenOwner,
+            clTokenSupply,
+            {'from': oracleProvider},
+            publish_source=publish_source)
+        
+        print('3) deploy chainlink (mock) operator by oracle provider {}'.format(
+            oracleProvider))
+
+        self.chainlinkOperator = ChainlinkOperator.deploy(
+            {'from': oracleProvider},
+            publish_source=publish_source)
+
+        print('4) set node operator list [{}] as authorized sender by oracle provider {}'.format(
+            chainlinkNodeOperator, oracleProvider))
+        
+        self.chainlinkOperator.setAuthorizedSenders([chainlinkNodeOperator])
+
+        chainLinkTokenAddress = self.chainlinkToken.address
+        chainLinkOracleAddress = self.chainlinkOperator.address
+        chainLinkJobId = s2b32('1')
+        chainLinkPaymentAmount = 0
+        print('5) deploy oracle by oracle provider {}'.format(
+            oracleProvider))
+        
+        self.oracle = oracleContractClass.deploy(
             s2b32(name),
             instance.getRegistry(),
-            {'from': oracleOwner},
-            publish_source=publishSource)
+            chainLinkTokenAddress,
+            chainLinkOracleAddress,
+            chainLinkJobId,
+            chainLinkPaymentAmount,
+            {'from': oracleProvider},
+            publish_source=publish_source)
+        
+        print('6) oracle {} proposing to instance by oracle provider {}'.format(
+            self.oracle, oracleProvider))
 
-        # 3) oracle owner proposes oracle to instance
         componentOwnerService.propose(
             self.oracle,
-            {'from': oracleOwner})
+            {'from': oracleProvider})
 
-        # 4) instance operator approves oracle
-        operatorService.approve(
+        print('7) approval of oracle id {} by instance operator {}'.format(
+            self.oracle.getId(), instance.getOwner()))
+
+        instanceOperatorService.approve(
             self.oracle.getId(),
             {'from': instance.getOwner()})
     
     def getId(self) -> int:
         return self.oracle.getId()
     
-    def getContract(self) -> TestOracle:
+    def getClOperator(self) -> ChainlinkOperator:
+        return self.chainlinkOperator
+    
+    def getContract(self):
         return self.oracle
 
 
-class GifTestProduct(object):
+class GifRiskpool(object):
 
     def __init__(self, 
         instance: GifInstance, 
-        token: Account, 
-        capitalOwner: Account, 
-        productOwner: Account, 
-        oracle: GifTestOracle, 
-        riskpool: GifTestRiskpool, 
-        name=PRODUCT_NAME, 
-        publishSource=False
+        riskpoolContractClass,
+        riskpoolKeeper: Account, 
+        name, 
+        erc20Token: Account,
+        riskpoolWallet: Account,
+        investor: Account,
+        collateralization:int,
+        publish_source,
+        maxActiveBundles=MAX_ACTIVE_RISKPOOL_BUNDLES_DEFAULT,
+        fixedFee=CAPITAL_FEE_FIXED_DEFAULT,
+        fractionalFee=CAPITAL_FEE_FRACTIONAL_DEFAULT
     ):
-        self.policy = instance.getPolicy()
+        instanceService = instance.getInstanceService()
+        instanceOperatorService = instance.getInstanceOperatorService()
+        componentOwnerService = instance.getComponentOwnerService()
+
+        print('------ setting up riskpool ------')
+
+        riskpoolKeeperRole = instanceService.getRiskpoolKeeperRole()
+        print('1) grant riskpool keeper role {} to riskpool keeper {}'.format(
+            riskpoolKeeperRole, riskpoolKeeper))
+
+        instanceOperatorService.grantRole(
+            riskpoolKeeperRole, 
+            riskpoolKeeper, 
+            {'from': instance.getOwner()})
+
+        print('2) deploy riskpool {} by riskpool keeper {}'.format(
+            name, riskpoolKeeper))
+
+        self.riskpool = riskpoolContractClass.deploy(
+            s2b(name),
+            collateralization,
+            erc20Token,
+            riskpoolWallet,
+            instance.getRegistry(),
+            {'from': riskpoolKeeper},
+            publish_source=publish_source)
+
+        print('3) investor role granting to investor {} by riskpool keeper {}'.format(
+            investor, riskpoolKeeper))
+
+        self.riskpool.grantInvestorRole(
+            investor,
+            {'from': riskpoolKeeper},
+        )
+
+        print('4) riskpool {} proposing to instance by riskpool keeper {}'.format(
+            self.riskpool, riskpoolKeeper))
+        
+        componentOwnerService.propose(
+            self.riskpool,
+            {'from': riskpoolKeeper})
+
+        print('5) approval of riskpool id {} by instance operator {}'.format(
+            self.riskpool.getId(), instance.getOwner()))
+        
+        instanceOperatorService.approve(
+            self.riskpool.getId(),
+            {'from': instance.getOwner()})
+
+        print('6) set max number of bundles to {} by riskpool keeper {}'.format(
+            maxActiveBundles, riskpoolKeeper))
+        
+        self.riskpool.setMaximumNumberOfActiveBundles(
+            maxActiveBundles,
+            {'from': riskpoolKeeper})
+
+        print('7) riskpool wallet {} set for riskpool id {} by instance operator {}'.format(
+            riskpoolWallet, self.riskpool.getId(), instance.getOwner()))
+        
+        instanceOperatorService.setRiskpoolWallet(
+            self.riskpool.getId(),
+            riskpoolWallet,
+            {'from': instance.getOwner()})
+
+        print('8) creating capital fee spec (fixed: {}, fractional: {}) for riskpool id {} by instance operator {}'.format(
+            fixedFee, fractionalFee, self.riskpool.getId(), instance.getOwner()))
+        
+        feeSpec = instanceOperatorService.createFeeSpecification(
+            self.riskpool.getId(),
+            fixedFee,
+            fractionalFee * instanceService.getFeeFractionFullUnit(),
+            b'',
+            {'from': instance.getOwner()}) 
+
+        print('9) setting capital fee spec by instance operator {}'.format(
+            instance.getOwner()))
+        
+        instanceOperatorService.setCapitalFees(
+            feeSpec,
+            {'from': instance.getOwner()}) 
+    
+    def getId(self) -> int:
+        return self.riskpool.getId()
+    
+    def getContract(self):
+        return self.riskpool
+
+
+class GifProduct(object):
+
+    def __init__(self,
+        instance: GifInstance,
+        productContractClass,
+        productOwner: Account,
+        insurer: Account,
+        name, 
+        erc20Token: Account,
+        oracle: GifOracle,
+        riskpool: GifRiskpool,
+        publish_source,
+        fixedFee=PREMIUM_FEE_FIXED_DEFAULT,
+        fractionalFee=PREMIUM_FEE_FRACTIONAL_DEFAULT,
+    ):
         self.oracle = oracle
         self.riskpool = riskpool
+        self.token = erc20Token
 
         instanceService = instance.getInstanceService()
-        operatorService = instance.getInstanceOperatorService()
+        instanceOperatorService = instance.getInstanceOperatorService()
         componentOwnerService = instance.getComponentOwnerService()
         registry = instance.getRegistry()
 
-        # 1) add oracle provider role to owner
-        ownerRole = instanceService.getProductOwnerRole()
-        operatorService.grantRole(
-            ownerRole,
+        print('------ setting up product ------')
+
+        productOwnerRole = instanceService.getProductOwnerRole()
+        print('1) grant product owner role {} to product owner {}'.format(
+            productOwnerRole, productOwner))
+
+        instanceOperatorService.grantRole(
+            productOwnerRole,
             productOwner, 
             {'from': instance.getOwner()})
 
-        # 2) product owner creates product
-        self.product = TestProduct.deploy(
+        print('2) deploy product {} by product owner {}'.format(
+            name, productOwner))
+        
+        self.product = productContractClass.deploy(
             s2b32(name),
-            token.address,
-            capitalOwner,
+            registry,
+            erc20Token.address,
             oracle.getId(),
             riskpool.getId(),
-            instance.getRegistry(),
+            insurer,
             {'from': productOwner},
-            publish_source=publishSource)
+            publish_source=publish_source)
 
-        # 3) product owner proposes product to instance
+        print('3) product {} proposing to instance by product owner {}'.format(
+            self.product, productOwner))
+        
         componentOwnerService.propose(
             self.product,
             {'from': productOwner})
 
-        # 4) instance operator approves product
-        operatorService.approve(
+        print('4) approval of product id {} by instance operator {}'.format(
+            self.product.getId(), instance.getOwner()))
+        
+        instanceOperatorService.approve(
             self.product.getId(),
             {'from': instance.getOwner()})
 
-        # 5) instance owner sets token in treasury
-        operatorService.setProductToken(
+        print('5) setting erc20 product token {} for product id {} by instance operator {}'.format(
+            erc20Token, self.product.getId(), instance.getOwner()))
+
+        instanceOperatorService.setProductToken(
             self.product.getId(), 
-            token,
+            erc20Token,
             {'from': instance.getOwner()}) 
 
-        # 5) instance owner creates and sets product fee spec
-        fixedFee = 3
-        fractionalFee = instanceService.getFeeFractionFullUnit() / 10 # corresponds to 10%
-        feeSpec = operatorService.createFeeSpecification(
+        print('6) creating premium fee spec (fixed: {}, fractional: {}) for product id {} by instance operator {}'.format(
+            fixedFee, fractionalFee, self.product.getId(), instance.getOwner()))
+        
+        feeSpec = instanceOperatorService.createFeeSpecification(
             self.product.getId(),
             fixedFee,
-            fractionalFee,
+            fractionalFee * instanceService.getFeeFractionFullUnit(),
             b'',
             {'from': instance.getOwner()}) 
 
-        operatorService.setPremiumFees(
+        print('7) setting premium fee spec by instance operator {}'.format(
+            instance.getOwner()))
+
+        instanceOperatorService.setPremiumFees(
             feeSpec,
             {'from': instance.getOwner()}) 
 
@@ -231,14 +315,86 @@ class GifTestProduct(object):
     def getId(self) -> int:
         return self.product.getId()
 
-    def getOracle(self) -> GifTestOracle:
+    def getToken(self):
+        return self.token
+
+    def getOracle(self) -> GifOracle:
         return self.oracle
 
-    def getRiskpool(self) -> GifTestRiskpool:
+    def getRiskpool(self) -> GifRiskpool:
         return self.riskpool
     
-    def getContract(self) -> TestProduct:
+    def getContract(self):
         return self.product
 
     def getPolicy(self, policyId: str):
         return self.policy.getPolicy(policyId)
+
+class GifProductComplete(object):
+
+    def __init__(self,
+        instance: GifInstance,
+        productContractClass,
+        oracleContractClass,
+        riskpoolContractClass,
+        productOwner: Account,
+        insurer: Account,
+        oracleProvider: Account,
+        chainlinkNodeOperator: Account,
+        riskpoolKeeper: Account,
+        riskpoolWallet: Account,
+        investor: Account,
+        erc20Token: Account,
+        name=NAME_DEFAULT,  
+        publish_source=False
+    ):
+        instanceService = instance.getInstanceService()
+        instanceOperatorService = instance.getInstanceOperatorService()
+        componentOwnerService = instance.getComponentOwnerService()
+        registry = instance.getRegistry()
+
+        self.token = erc20Token
+        baseName = '{}_{}'.format(name, str(int(time.time()))) # FIXME
+
+        self.oracle = GifOracle(
+            instance,
+            oracleContractClass,
+            oracleProvider, 
+            # TODO analyze how to set a separate chainlink operator node account
+            chainlinkNodeOperator,
+            '{}_Oracle'.format(baseName),
+            publish_source)
+
+        self.riskpool = GifRiskpool(
+            instance, 
+            riskpoolContractClass,
+            riskpoolKeeper, 
+            '{}_Riskpool'.format(baseName),
+            erc20Token, 
+            riskpoolWallet, 
+            investor, 
+            instanceService.getFullCollateralizationLevel(),
+            publish_source)
+
+        self.product = GifProduct(
+            instance,
+            productContractClass,
+            productOwner, 
+            insurer, 
+            '{}_Product'.format(baseName),
+            erc20Token, 
+            self.oracle,
+            self.riskpool,
+            publish_source)
+
+    def getToken(self):
+        return self.token
+
+    def getOracle(self) -> GifOracle:
+        return self.oracle
+
+    def getRiskpool(self) -> GifRiskpool:
+        return self.riskpool
+
+    def getProduct(self) -> GifProduct:
+        return self.product

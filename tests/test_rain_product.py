@@ -7,16 +7,22 @@ from brownie.network.account import Account
 from brownie import (
     interface,
     RainProduct,
-    BundleToken
 )
 
-from scripts.rain_product import (
-    GifRainProduct
+from scripts.product import (
+    GifProduct
 )
 
 from scripts.setup import (
     fund_riskpool,
     fund_customer,
+)
+
+from scripts.product import (
+    CAPITAL_FEE_FIXED_DEFAULT,
+    CAPITAL_FEE_FRACTIONAL_DEFAULT,
+    PREMIUM_FEE_FIXED_DEFAULT,
+    PREMIUM_FEE_FRACTIONAL_DEFAULT,
 )
 
 from scripts.instance import GifInstance
@@ -31,7 +37,7 @@ def isolation(fn_isolation):
 def test_happy_path(
     instance: GifInstance, 
     instanceOperator, 
-    gifRainProduct: GifRainProduct,
+    gifProduct: GifProduct,
     riskpoolWallet,
     investor,
     productOwner,
@@ -43,15 +49,15 @@ def test_happy_path(
 ):
     instanceService = instance.getInstanceService()
 
-    product = gifRainProduct.getContract()
-    oracle = gifRainProduct.getOracle().getContract()
-    riskpool = gifRainProduct.getRiskpool().getContract()
+    product = gifProduct.getContract()
+    oracle = gifProduct.getOracle().getContract()
+    riskpool = gifProduct.getRiskpool().getContract()
 
-    clOperator = gifRainProduct.getOracle().getClOperator()
+    clOperator = gifProduct.getOracle().getClOperator()
 
     print('--- test setup funding riskpool --------------------------')
 
-    token = gifRainProduct.getToken()
+    token = gifProduct.getToken()
     assert token.balanceOf(riskpoolWallet) == 0
 
     riskpoolFunding = 200000
@@ -66,7 +72,7 @@ def test_happy_path(
 
     # check riskpool funds and book keeping after funding
     riskpoolBalanceAfterFunding = token.balanceOf(riskpoolWallet)
-    riskpoolExpectedBalance = 0.95 * riskpoolFunding - 42
+    riskpoolExpectedBalance = (1 - CAPITAL_FEE_FRACTIONAL_DEFAULT) * riskpoolFunding - CAPITAL_FEE_FIXED_DEFAULT
     assert riskpoolBalanceAfterFunding == riskpoolExpectedBalance
     assert riskpool.bundles() == 1
     assert riskpool.getCapital() == riskpoolExpectedBalance
@@ -88,7 +94,7 @@ def test_happy_path(
 
     # cheeck bundle token (nft)
     bundleNftId = bundleAfterFunding['tokenId']
-    bundleToken = contractFromAddress(BundleToken, instanceService.getBundleToken())
+    bundleToken = contractFromAddress(interface.IBundleToken, instanceService.getBundleToken())
     assert bundleToken.exists(bundleNftId) == True
     assert bundleToken.burned(bundleNftId) == False
     assert bundleToken.getBundleId(bundleNftId) == bundleId
@@ -158,7 +164,7 @@ def test_happy_path(
     assert premium[1] + customer2BalanceAfterPremium == customer2BalanceAfterFunding 
 
     # check riskpool funds after application/paying premium
-    netPremium = [0.9 * premium[0] - 3, 0.9 * premium[1] - 3]
+    netPremium = [(1-PREMIUM_FEE_FRACTIONAL_DEFAULT) * premium[0] - PREMIUM_FEE_FIXED_DEFAULT, (1-PREMIUM_FEE_FRACTIONAL_DEFAULT) * premium[1] - PREMIUM_FEE_FIXED_DEFAULT]
     riskpoolBalanceAfterPremiums = token.balanceOf(riskpoolWallet)
     assert riskpoolBalanceAfterPremiums == riskpoolBalanceAfterFunding + netPremium[0] + netPremium[1]
 
@@ -168,6 +174,7 @@ def test_happy_path(
     riskpoolExpectedBalance += netPremium[0] + netPremium[1]
 
     bundleAfterPremium = _getBundleDict(instanceService, riskpool, bundleIdx)
+
     assert bundleAfterPremium['id'] == 1
     assert bundleAfterPremium['riskpoolId'] == riskpool.getId()
     assert bundleAfterPremium['state'] == 0
@@ -227,7 +234,7 @@ def test_happy_path(
     assert product.getPolicyId(riskId[1], 0) == policyId[1]
  
 
-    print('--- step trigger oracle (call chainlin node) -------------')
+    print('--- step trigger oracle (call chainlink node) -------------')
 
     tx[0] = product.triggerOracle(policyId[0], {'from': insurer})
     tx[1] = product.triggerOracle(policyId[1], {'from': insurer})
@@ -511,7 +518,7 @@ def test_happy_path(
 def test_create_bundle_investor_restriction(
     instance: GifInstance, 
     instanceOperator: Account, 
-    gifRainProduct: GifRainProduct,
+    gifProduct: GifProduct,
     riskpoolWallet: Account,
     productOwner: Account,
     oracleProvider: Account,
@@ -521,12 +528,12 @@ def test_create_bundle_investor_restriction(
 ):
     instanceService = instance.getInstanceService()
 
-    product = gifRainProduct.getContract()
-    oracle = gifRainProduct.getOracle().getContract()
-    riskpool = gifRainProduct.getRiskpool().getContract()
+    product = gifProduct.getContract()
+    oracle = gifProduct.getOracle().getContract()
+    riskpool = gifProduct.getRiskpool().getContract()
 
     amount = 5000
-    token = gifRainProduct.getToken()
+    token = gifProduct.getToken()
     token.transfer(investor, amount, {'from': instanceOperator})
     token.approve(instance.getTreasury(), amount, {'from': investor})
 
@@ -570,9 +577,9 @@ def test_create_bundle_investor_restriction(
     assert bundleIdCustomer == bundleId + 1
 
 
-def test_payout_percentage_calculation(gifRainProduct: GifRainProduct):
+def test_payout_percentage_calculation(gifProduct: GifProduct):
 
-    product = gifRainProduct.getContract()
+    product = gifProduct.getContract()
     multiplier = product.getPercentageMultiplier()
 
     # product example values
@@ -611,9 +618,9 @@ def test_payout_percentage_calculation(gifRainProduct: GifRainProduct):
     assert get_payout_delta(1, aph, 19, trigger, exit, product, multiplier) < 0.0000001
     assert get_payout_delta(1, aph, 20, trigger, exit, product, multiplier) < 0.0000001
 
-def test_payout_percentage_calculation_single(gifRainProduct: GifRainProduct):
+def test_payout_percentage_calculation_single(gifProduct: GifProduct):
 
-    product = gifRainProduct.getContract()
+    product = gifProduct.getContract()
     multiplier = product.getPercentageMultiplier()
 
     trigger = 0.75

@@ -7,11 +7,10 @@ from brownie.network.account import Account
 from brownie import (
     interface,
     RainProduct,
-    BundleToken
 )
 
-from scripts.rain_product import (
-    GifRainProduct
+from scripts.product import (
+    GifProduct
 )
 
 from scripts.setup import (
@@ -31,7 +30,7 @@ def isolation(fn_isolation):
 def test_trigger_and_cancel_oracle_requests(
     instance: GifInstance, 
     instanceOperator, 
-    gifRainProduct: GifRainProduct,
+    gifProduct: GifProduct,
     riskpoolWallet,
     investor,
     productOwner,
@@ -42,12 +41,12 @@ def test_trigger_and_cancel_oracle_requests(
     customer2
 ):
     instanceService = instance.getInstanceService()
-    product = gifRainProduct.getContract()
-    oracle = gifRainProduct.getOracle().getContract()
-    clOperator = gifRainProduct.getOracle().getClOperator()
-    riskpool = gifRainProduct.getRiskpool().getContract()
+    product = gifProduct.getContract()
+    oracle = gifProduct.getOracle().getContract()
+    clOperator = gifProduct.getOracle().getClOperator()
+    riskpool = gifProduct.getRiskpool().getContract()
 
-    token = gifRainProduct.getToken()
+    token = gifProduct.getToken()
     riskpoolFunding = 200000
     fund_riskpool(
         instance, 
@@ -181,7 +180,7 @@ def test_trigger_and_cancel_oracle_requests(
 def test_oracle_responds_with_invalid_aaay(
     instance: GifInstance, 
     instanceOperator, 
-    gifRainProduct: GifRainProduct,
+    gifProduct: GifProduct,
     riskpoolWallet,
     investor,
     productOwner,
@@ -192,12 +191,12 @@ def test_oracle_responds_with_invalid_aaay(
     customer2
 ):
     instanceService = instance.getInstanceService()
-    product = gifRainProduct.getContract()
-    oracle = gifRainProduct.getOracle().getContract()
-    clOperator = gifRainProduct.getOracle().getClOperator()
-    riskpool = gifRainProduct.getRiskpool().getContract()
+    product = gifProduct.getContract()
+    oracle = gifProduct.getOracle().getContract()
+    clOperator = gifProduct.getOracle().getClOperator()
+    riskpool = gifProduct.getRiskpool().getContract()
 
-    token = gifRainProduct.getToken()
+    token = gifProduct.getToken()
     riskpoolFunding = 200000
     fund_riskpool(
         instance, 
@@ -340,9 +339,9 @@ def test_oracle_responds_with_invalid_aaay(
         product.triggerOracle(processId, {'from': insurer})
 
 
-def test_oracle_getters(gifRainProduct: GifRainProduct):
+def test_oracle_getters(gifProduct: GifProduct):
 
-    rainOracle = gifRainProduct.getOracle()
+    rainOracle = gifProduct.getOracle()
     oracle = rainOracle.getContract()
 
     assert oracle.getChainlinkToken() == rainOracle.chainlinkToken

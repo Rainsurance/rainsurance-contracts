@@ -9,6 +9,10 @@ RUN if [ "${NODE_VERSION}" != "none" ]; then su vscode -c "umask 0002 && . /usr/
 # install mcfly as root
 RUN curl -LSfs https://raw.githubusercontent.com/cantino/mcfly/master/ci/install.sh | sh -s -- --git cantino/mcfly 
 
+# # download required solidity compiler
+COPY .devcontainer/scripts/install_solidity.sh /tmp
+RUN /tmp/install_solidity.sh
+
 USER vscode
 
 # Shell customizations
@@ -28,24 +32,35 @@ RUN pip3 install thefuck --user \
 RUN echo 'eval "$(mcfly init zsh)"' >> ~/.zshrc \
     && touch ~/.zsh_history
 
+# upgrade pip
+RUN python -m pip install --upgrade pip
+
+# install fastapi
+RUN pip install loguru
+RUN pip install fastapi
+RUN pip install "uvicorn[standard]"
+
+# install brownie
 RUN pip install eth-brownie
 
 # [Optional] Uncomment this line to install global node packages.
-RUN npm install -g ganache solhint prettier prettier-plugin-solidity solhint-plugin-prettier
-
-# # download required solidity compiler
-COPY .devcontainer/scripts/install_solidity.sh /tmp
-RUN /tmp/install_solidity.sh
+RUN npm install -g ganache@7.6.0 solhint prettier prettier-plugin-solidity solhint-plugin-prettier
 
 # Download openzeppelin and chainlink depedencies (large and slow)
 ARG VERSION_OPEN_ZEPPELIN=4.7.3
-ARG VERSION_CHAINLINK=1.6.0
 RUN wget -O /tmp/v${VERSION_OPEN_ZEPPELIN}.tar.gz https://github.com/OpenZeppelin/openzeppelin-contracts/archive/refs/tags/v${VERSION_OPEN_ZEPPELIN}.tar.gz \
-    && wget -O /tmp/v${VERSION_CHAINLINK}.tar.gz https://github.com/smartcontractkit/chainlink/archive/refs/tags/v${VERSION_CHAINLINK}.tar.gz
-RUN mkdir -p /home/vscode/.brownie/packages/OpenZeppelin \
+    && mkdir -p /home/vscode/.brownie/packages/OpenZeppelin \
     && cd /home/vscode/.brownie/packages/OpenZeppelin \
     && tar xvfz /tmp/v${VERSION_OPEN_ZEPPELIN}.tar.gz \
-    && mv openzeppelin-contracts-${VERSION_OPEN_ZEPPELIN} openzeppelin-contracts@${VERSION_OPEN_ZEPPELIN} \
+    && mv openzeppelin-contracts-${VERSION_OPEN_ZEPPELIN} openzeppelin-contracts@${VERSION_OPEN_ZEPPELIN} 
+ARG VERSION_CHAINLINK=1.6.0
+RUN wget -O /tmp/v${VERSION_CHAINLINK}.tar.gz https://github.com/smartcontractkit/chainlink/archive/refs/tags/v${VERSION_CHAINLINK}.tar.gz \
+    && mkdir -p /home/vscode/.brownie/packages/smartcontractkit \
+    && cd /home/vscode/.brownie/packages/smartcontractkit \
+    && tar xvfz /tmp/v${VERSION_CHAINLINK}.tar.gz \
+    && mv chainlink-${VERSION_CHAINLINK} chainlink@${VERSION_CHAINLINK}
+ARG VERSION_CHAINLINK=1.10.0
+RUN wget -O /tmp/v${VERSION_CHAINLINK}.tar.gz https://github.com/smartcontractkit/chainlink/archive/refs/tags/v${VERSION_CHAINLINK}.tar.gz \
     && mkdir -p /home/vscode/.brownie/packages/smartcontractkit \
     && cd /home/vscode/.brownie/packages/smartcontractkit \
     && tar xvfz /tmp/v${VERSION_CHAINLINK}.tar.gz \
@@ -54,5 +69,7 @@ RUN mkdir -p /home/vscode/.brownie/packages/OpenZeppelin \
 # [Optional] Uncomment this section to install additional OS packages.
 # RUN apt-get update && export DEBIAN_FRONTEND=noninteractive \
 #     && apt-get -y install --no-install-recommends <your-package-list-here>
+
+RUN sudo mkdir /gif-contracts && sudo chown vscode /gif-contracts
 
 WORKDIR /workspace

@@ -8,16 +8,20 @@ from brownie.network.account import Account
 from brownie import (
     interface,
     RainProduct,
-    BundleToken
 )
 
-from scripts.rain_product import (
-    GifRainProduct
+from scripts.product import (
+    GifProduct
 )
 
 from scripts.setup import (
     fund_riskpool,
     fund_customer,
+)
+
+from scripts.product import (
+    CAPITAL_FEE_FIXED_DEFAULT,
+    CAPITAL_FEE_FRACTIONAL_DEFAULT,
 )
 
 from scripts.instance import GifInstance
@@ -33,7 +37,7 @@ def isolation(fn_isolation):
 def test_process_policies_for_risk(
     instance: GifInstance, 
     instanceOperator, 
-    gifRainProduct: GifRainProduct,
+    gifProduct: GifProduct,
     riskpoolWallet,
     investor,
     insurer,
@@ -41,15 +45,15 @@ def test_process_policies_for_risk(
 ):
     instanceService = instance.getInstanceService()
 
-    product = gifRainProduct.getContract()
-    oracle = gifRainProduct.getOracle().getContract()
-    riskpool = gifRainProduct.getRiskpool().getContract()
+    product = gifProduct.getContract()
+    oracle = gifProduct.getOracle().getContract()
+    riskpool = gifProduct.getRiskpool().getContract()
 
-    clOperator = gifRainProduct.getOracle().getClOperator()
+    clOperator = gifProduct.getOracle().getClOperator()
 
     print('--- test setup funding riskpool --------------------------')
 
-    token = gifRainProduct.getToken()
+    token = gifProduct.getToken()
     assert token.balanceOf(riskpoolWallet) == 0
 
     riskpoolFunding = 200000
@@ -64,7 +68,7 @@ def test_process_policies_for_risk(
 
     # check riskpool funds and book keeping after funding
     riskpoolBalanceAfterFunding = token.balanceOf(riskpoolWallet)
-    riskpoolExpectedBalance = 0.95 * riskpoolFunding - 42
+    riskpoolExpectedBalance = (1 - CAPITAL_FEE_FRACTIONAL_DEFAULT) * riskpoolFunding - CAPITAL_FEE_FIXED_DEFAULT
     assert riskpoolBalanceAfterFunding == riskpoolExpectedBalance
     assert riskpool.bundles() == 1
     assert riskpool.getCapital() == riskpoolExpectedBalance
@@ -86,7 +90,7 @@ def test_process_policies_for_risk(
 
     # cheeck bundle token (nft)
     bundleNftId = bundleAfterFunding['tokenId']
-    bundleToken = contractFromAddress(BundleToken, instanceService.getBundleToken())
+    bundleToken = contractFromAddress(interface.IBundleToken, instanceService.getBundleToken())
     assert bundleToken.exists(bundleNftId) == True
     assert bundleToken.burned(bundleNftId) == False
     assert bundleToken.getBundleId(bundleNftId) == bundleId
@@ -267,7 +271,7 @@ def test_process_policies_for_risk(
 def test_process_policies_mix_batch_individual_processing(
     instance: GifInstance, 
     instanceOperator, 
-    gifRainProduct: GifRainProduct,
+    gifProduct: GifProduct,
     riskpoolWallet,
     investor,
     insurer,
@@ -275,15 +279,15 @@ def test_process_policies_mix_batch_individual_processing(
 ):
     instanceService = instance.getInstanceService()
 
-    product = gifRainProduct.getContract()
-    oracle = gifRainProduct.getOracle().getContract()
-    riskpool = gifRainProduct.getRiskpool().getContract()
+    product = gifProduct.getContract()
+    oracle = gifProduct.getOracle().getContract()
+    riskpool = gifProduct.getRiskpool().getContract()
 
-    clOperator = gifRainProduct.getOracle().getClOperator()
+    clOperator = gifProduct.getOracle().getClOperator()
 
     print('--- test setup funding riskpool --------------------------')
 
-    token = gifRainProduct.getToken()
+    token = gifProduct.getToken()
 
     riskpoolFunding = 200000
     fund_riskpool(
@@ -297,7 +301,7 @@ def test_process_policies_mix_batch_individual_processing(
 
     # check riskpool funds and book keeping after funding
     riskpoolBalanceAfterFunding = token.balanceOf(riskpoolWallet)
-    riskpoolExpectedBalance = 0.95 * riskpoolFunding - 42
+    riskpoolExpectedBalance = (1 - CAPITAL_FEE_FRACTIONAL_DEFAULT) * riskpoolFunding - CAPITAL_FEE_FIXED_DEFAULT
 
     # check risk bundle in riskpool and book keeping after funding
     bundleIdx = 0
@@ -306,7 +310,7 @@ def test_process_policies_mix_batch_individual_processing(
 
     # cheeck bundle token (nft)
     bundleNftId = bundleAfterFunding['tokenId']
-    bundleToken = contractFromAddress(BundleToken, instanceService.getBundleToken())
+    bundleToken = contractFromAddress(interface.IBundleToken, instanceService.getBundleToken())
 
     print('--- test setup risks -------------------------------------')
 
