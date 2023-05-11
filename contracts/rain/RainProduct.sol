@@ -516,35 +516,6 @@ contract RainProduct is
         require(exit > trigger, "ERROR:RAIN-042:RISK_EXIT_NOT_LARGER_THAN_TRIGGER");
         require(aph > 0, "ERROR:RAIN-043:RISK_APH_ZERO_INVALID");
     }
-    function _processPolicy(bytes32 policyId, Risk memory risk)
-        internal
-    {
-        IPolicy.Application memory application 
-            = _getApplication(policyId);
-
-        uint256 claimAmount = calculatePayout(
-            risk.payoutPercentage, 
-            application.sumInsuredAmount);
-        
-        uint256 claimId = _newClaim(policyId, claimAmount, "");
-        emit LogRainClaimCreated(policyId, claimId, claimAmount);
-
-        if (claimAmount > 0) {
-            uint256 payoutAmount = claimAmount;
-            _confirmClaim(policyId, claimId, payoutAmount);
-
-            uint256 payoutId = _newPayout(policyId, claimId, payoutAmount, "");
-            _processPayout(policyId, payoutId);
-
-            emit LogRainPayoutCreated(policyId, payoutAmount);
-        }
-        else {
-            _declineClaim(policyId, claimId);
-            _closeClaim(policyId, claimId);
-        }
-
-        emit LogRainPolicyProcessed(policyId);
-    }
 
     function _getRiskId(bytes32 processId) private view returns(bytes32 riskId) {
         IPolicy.Application memory application = _getApplication(processId);
