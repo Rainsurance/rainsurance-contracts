@@ -12,7 +12,9 @@ contract RainOracle is
 {
     using strings for bytes32;
     using Chainlink for Chainlink.Request;
-    
+
+    string public constant API_URL = "https://rainsurance.org/api/weather";
+
     mapping(bytes32 /* Chainlink request ID */ => uint256 /* GIF request ID */) public gifRequests;
     bytes32 private jobId;
     uint256 private payment;
@@ -22,9 +24,6 @@ contract RainOracle is
     event LogRainFulfill(
         uint256 requestId, 
         bytes32 chainlinkRequestId, 
-        bytes32 placeId, 
-        uint256 startDate, 
-        uint256 endDate, 
         uint256 aaay
     );
 
@@ -65,7 +64,7 @@ contract RainOracle is
         external override
         onlyQuery
     {
-        Chainlink.Request memory request_ = buildChainlinkRequest(
+        Chainlink.Request memory req = buildChainlinkRequest(
             jobId,
             address(this),
             this.fulfill.selector
@@ -78,36 +77,53 @@ contract RainOracle is
             int256 long
         ) = abi.decode(input, (uint256, uint256, int256, int256));
 
-        request_.add("startDate", Strings.toString(startDate));
-        request_.add("endDate", Strings.toString(endDate));
-        string memory latSign = lat >= 0 ? "" : "-";
-        string memory latString = string(abi.encodePacked(latSign, Strings.toString(abs(lat)))); 
-        request_.add("lat", latString);
-        string memory longSign = lat >= 0 ? "" : "-";
-        string memory longString = string(abi.encodePacked(longSign, Strings.toString(abs(long)))); 
-        request_.add("long", longString);
+        string memory requestUrl = prepareRequestUrl(lat, long, startDate, endDate);
+        req.add(
+            "get",
+            requestUrl
+        );
+        req.add("path", "result");
 
-        bytes32 chainlinkRequestId = sendChainlinkRequest(request_, payment);
+        bytes32 chainlinkRequestId = sendChainlinkRequest(req, payment);
 
         gifRequests[chainlinkRequestId] = gifRequestId;
         emit LogRainRequest(gifRequestId, chainlinkRequestId);
     }
 
+function prepareRequestUrl(
+            int256 lat,
+            int256 long,
+            uint256 startDate,
+            uint256 endDate
+    ) public pure returns (string memory requestUrl) {
+        string memory latString = string(abi.encodePacked(lat >= 0 ? "" : "-", Strings.toString(abs(lat)))); 
+        string memory longString = string(abi.encodePacked(long >= 0 ? "" : "-", Strings.toString(abs(long)))); 
+        requestUrl = string(abi.encodePacked(
+            API_URL,
+            "?startdate=",
+            Strings.toString(startDate),
+            "&enddate=",
+            Strings.toString(endDate),
+            "&lat=",
+            latString,
+            "&long=",
+            longString
+        ));
+    }
+
     function fulfill(
         bytes32 chainlinkRequestId, 
-        bytes32 placeId, 
-        uint256 startDate, 
-        uint256 endDate, 
         uint256 aaay
     )
         public recordChainlinkFulfillment(chainlinkRequestId) 
     {
         uint256 gifRequest = gifRequests[chainlinkRequestId];
-        bytes memory data =  abi.encode(placeId, startDate, endDate, aaay);        
+        
+        bytes memory data =  abi.encode(aaay);
         _respond(gifRequest, data);
 
         delete gifRequests[chainlinkRequestId];
-        emit LogRainFulfill(gifRequest, chainlinkRequestId, placeId, startDate, endDate, aaay);
+        emit LogRainFulfill(gifRequest, chainlinkRequestId, aaay);
     }
 
     function cancel(uint256 requestId)
@@ -130,11 +146,9 @@ contract RainOracle is
         pure
         returns(bytes memory parameterData)
     {
+        //TODO: for now I'm just ignoring the extra parameters in order to not the break the tests. If they aren't really needed, better remove them.
         return abi.encode(
             chainlinkRequestId, 
-            placeId, 
-            startDate, 
-            endDate, 
             aaay
         );
     }

@@ -338,15 +338,10 @@ contract RainProduct is
         external 
         onlyOracle
     {
-        (
-            bytes32 placeId, 
-            uint256 startDate, 
-            uint256 endDate, 
-            uint256 aaay
-        ) = abi.decode(responseData, (bytes32, uint256, uint256, uint256));
+
+        (uint256 aaay) = abi.decode(responseData, (uint256));
 
         bytes32 riskId = _getRiskId(processId);
-        require(riskId == getRiskId(placeId, startDate, endDate), "ERROR:RAIN-020:RISK_ID_MISMATCH");
 
         Risk storage risk = _risks[riskId];
         require(risk.createdAt > 0, "ERROR:RAIN-021:RISK_UNDEFINED");
