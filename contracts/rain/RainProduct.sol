@@ -500,6 +500,10 @@ contract RainProduct is
         return EnumerableSet.at(_policies[riskId], policyIdx);
     }
 
+    function getOracleId() external view returns (uint256 oracleId) {
+        return _oracleId;
+    }
+
     function _validateRiskParameters(
         uint256 trigger, 
         uint256 exit,
