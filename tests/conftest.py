@@ -184,11 +184,11 @@ def gifProductDeploy(
         productOwner,
         insurer,
         oracleProvider,
-        chainlinkNodeOperator,
         riskpoolKeeper, 
         riskpoolWallet,
         investor,
         token,
+        chainlinkNodeOperator,
         name=PRODUCT_BASE_NAME,
         publish_source=False)
 

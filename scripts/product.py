@@ -11,8 +11,10 @@ from brownie import (
 )
 from scripts.util import (
     s2b,
-    s2b32
+    s2b32,
+    contract_from_address
 )
+
 from scripts.instance import GifInstance
 
 # product contract names
@@ -39,7 +41,11 @@ class GifOracle(object):
         oracleProvider: Account,
         chainlinkNodeOperator: Account,
         name,
-        publish_source
+        publish_source,
+        chainLinkTokenAddress=None,
+        chainLinkOracleAddress=None,
+        chainLinkJobId=None,
+        chainLinkPaymentAmount=None
     ):
         instanceService = instance.getInstanceService()
         instanceOperatorService = instance.getInstanceOperatorService()
@@ -56,33 +62,46 @@ class GifOracle(object):
             oracleProvider, 
             {'from': instance.getOwner()})
         
-        clTokenOwner = oracleProvider
-        clTokenSupply = 10**20
-        print('2) deploy chainlink (mock) token with token owner (=oracle provider) {} by oracle provider {}'.format(
-            clTokenOwner, oracleProvider))
+        if chainLinkTokenAddress is None:
+            clTokenOwner = oracleProvider
+            clTokenSupply = 10**20
+            print('2) deploy chainlink (mock) token with token owner (=oracle provider) {} by oracle provider {}'.format(
+                clTokenOwner, oracleProvider))
+            self.chainlinkToken = ChainlinkToken.deploy(
+                clTokenOwner,
+                clTokenSupply,
+                {'from': oracleProvider},
+                publish_source=publish_source)
+            chainLinkTokenAddress = self.chainlinkToken.address
+        else:
+            print('2) found chainlink token with address {}'.format(
+            chainLinkTokenAddress))
         
-        self.chainlinkToken = ChainlinkToken.deploy(
-            clTokenOwner,
-            clTokenSupply,
-            {'from': oracleProvider},
-            publish_source=publish_source)
+        if chainLinkOracleAddress is None:
+            print('3) deploy chainlink (mock) operator by oracle provider {}'.format(
+                oracleProvider))
+            self.chainlinkOperator = ChainlinkOperator.deploy(
+                {'from': oracleProvider},
+                publish_source=publish_source)
+            chainLinkOracleAddress = self.chainlinkOperator.address
+
+            print('4) set node operator list [{}] as authorized sender by oracle provider {}'.format(
+                chainlinkNodeOperator, oracleProvider))
+            self.chainlinkOperator.setAuthorizedSenders([chainlinkNodeOperator])
+
+        else:
+            print('3) found chainlink operator with address {}'.format(
+                chainLinkOracleAddress))
+            self.chainlinkOperator = contract_from_address(
+                ChainlinkOperator, 
+                chainLinkOracleAddress)
+
+        if chainLinkJobId is None:
+            chainLinkJobId = s2b32('1')
+
+        if chainLinkPaymentAmount is None:
+            chainLinkPaymentAmount = 0
         
-        print('3) deploy chainlink (mock) operator by oracle provider {}'.format(
-            oracleProvider))
-
-        self.chainlinkOperator = ChainlinkOperator.deploy(
-            {'from': oracleProvider},
-            publish_source=publish_source)
-
-        print('4) set node operator list [{}] as authorized sender by oracle provider {}'.format(
-            chainlinkNodeOperator, oracleProvider))
-        
-        self.chainlinkOperator.setAuthorizedSenders([chainlinkNodeOperator])
-
-        chainLinkTokenAddress = self.chainlinkToken.address
-        chainLinkOracleAddress = self.chainlinkOperator.address
-        chainLinkJobId = s2b32('1')
-        chainLinkPaymentAmount = 0
         print('5) deploy oracle by oracle provider {}'.format(
             oracleProvider))
         
@@ -340,13 +359,17 @@ class GifProductComplete(object):
         productOwner: Account,
         insurer: Account,
         oracleProvider: Account,
-        chainlinkNodeOperator: Account,
         riskpoolKeeper: Account,
         riskpoolWallet: Account,
         investor: Account,
         erc20Token: Account,
+        chainlinkNodeOperator: Account,
+        chainLinkTokenAddress=None,
+        chainLinkOracleAddress=None,
+        chainLinkJobId=None,
+        chainLinkPaymentAmount=None,
         name=NAME_DEFAULT,  
-        publish_source=False
+        publish_source=False,
     ):
         instanceService = instance.getInstanceService()
         instanceOperatorService = instance.getInstanceOperatorService()
@@ -363,7 +386,11 @@ class GifProductComplete(object):
             # TODO analyze how to set a separate chainlink operator node account
             chainlinkNodeOperator,
             '{}_Oracle'.format(baseName),
-            publish_source)
+            publish_source,
+            chainLinkTokenAddress,
+            chainLinkOracleAddress,
+            chainLinkJobId,
+            chainLinkPaymentAmount)
 
         self.riskpool = GifRiskpool(
             instance, 

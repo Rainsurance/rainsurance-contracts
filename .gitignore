@@ -15,4 +15,5 @@ tmp/
 
 etherisc*.tgz
 
-gif_instance_address.txt
+gif_instance_address*.txt
+deploy_log*.txt

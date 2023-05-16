@@ -90,11 +90,11 @@ contract RainOracle is
         emit LogRainRequest(gifRequestId, chainlinkRequestId);
     }
 
-function prepareRequestUrl(
-            int256 lat,
-            int256 long,
-            uint256 startDate,
-            uint256 endDate
+    function prepareRequestUrl(
+        int256 lat,
+        int256 long,
+        uint256 startDate,
+        uint256 endDate
     ) public pure returns (string memory requestUrl) {
         string memory latString = string(abi.encodePacked(lat >= 0 ? "" : "-", Strings.toString(abs(lat)))); 
         string memory longString = string(abi.encodePacked(long >= 0 ? "" : "-", Strings.toString(abs(long)))); 

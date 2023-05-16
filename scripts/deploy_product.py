@@ -1,3 +1,5 @@
+import os
+
 from brownie.network import accounts
 from brownie.network.account import Account
 
@@ -47,36 +49,41 @@ COMPONENT_OWNER_SERVICE = 'componentOwnerService'
 PRODUCT = 'product'
 ORACLE = 'oracle'
 RISKPOOL = 'riskpool'
-NODE_OPERATOR = 'chainlinkNodeOperator'
 
 CHAIN_ID_MUMBAI = 80001
 CHAIN_IDS_WITH_GAS_PRICE = [CHAIN_ID_MUMBAI]
 
+def get_gas_price() -> int:
+    if web3.chain_id in CHAIN_IDS_WITH_GAS_PRICE:
+        return web3.eth.gas_price
+    
+    return GAS_PRICE
+
 # mumbai price estimate
 GAS_PRICE = 1600000000
-# GAS_PRICE = web3.eth.gas_price
 GAS_PRICE_SAFETY_FACTOR = 1.25
 
 GAS_S = 2000000
 GAS_M = 3 * GAS_S
 GAS_L = 10 * GAS_M
 
-REQUIRED_FUNDS_S = int(GAS_PRICE * GAS_PRICE_SAFETY_FACTOR * GAS_S)
-REQUIRED_FUNDS_M = int(GAS_PRICE * GAS_PRICE_SAFETY_FACTOR * GAS_M)
-REQUIRED_FUNDS_L = int(GAS_PRICE * GAS_PRICE_SAFETY_FACTOR * GAS_L)
+gas_price = get_gas_price()
+REQUIRED_FUNDS_S = int(gas_price * GAS_PRICE_SAFETY_FACTOR * GAS_S)
+REQUIRED_FUNDS_M = int(gas_price * GAS_PRICE_SAFETY_FACTOR * GAS_M)
+REQUIRED_FUNDS_L = int(gas_price * GAS_PRICE_SAFETY_FACTOR * GAS_L)
 
 REQUIRED_FUNDS = {
-    INSTANCE_OPERATOR: REQUIRED_FUNDS_L,
-    INSTANCE_WALLET:   REQUIRED_FUNDS_S,
-    PRODUCT_OWNER:     REQUIRED_FUNDS_M,
-    INSURER:           REQUIRED_FUNDS_S,
-    ORACLE_PROVIDER:   REQUIRED_FUNDS_M,
-    NODE_OPERATOR:     REQUIRED_FUNDS_M,
-    RISKPOOL_KEEPER:   REQUIRED_FUNDS_M,
-    RISKPOOL_WALLET:   REQUIRED_FUNDS_S,
-    INVESTOR:          REQUIRED_FUNDS_S,
-    CUSTOMER1:         REQUIRED_FUNDS_S,
-    CUSTOMER2:         REQUIRED_FUNDS_S,
+    INSTANCE_OPERATOR:          REQUIRED_FUNDS_L,
+    INSTANCE_WALLET:            REQUIRED_FUNDS_S,
+    PRODUCT_OWNER:              REQUIRED_FUNDS_M,
+    INSURER:                    REQUIRED_FUNDS_S,
+    ORACLE_PROVIDER:            REQUIRED_FUNDS_M,
+    CHAINLINK_NODE_OPERATOR:    REQUIRED_FUNDS_M,
+    RISKPOOL_KEEPER:            REQUIRED_FUNDS_M,
+    RISKPOOL_WALLET:            REQUIRED_FUNDS_S,
+    INVESTOR:                   REQUIRED_FUNDS_S,
+    CUSTOMER1:                  REQUIRED_FUNDS_S,
+    CUSTOMER2:                  REQUIRED_FUNDS_S,
 }
 
 
@@ -162,6 +169,23 @@ def verify_element(
         print('{} ERROR {} expected {}'.format(element, value, expected_value))
 
 
+# Metamask Flask
+def stakeholders_accounts():
+    return {
+        INSTANCE_OPERATOR: accounts.add(os.getenv("INSTANCE_OPERATOR_PK")),
+        INSTANCE_WALLET: accounts.add(os.getenv("INSTANCE_WALLET_PK")),
+        ORACLE_PROVIDER: accounts.add(os.getenv("ORACLE_PROVIDER_PK")),
+        CHAINLINK_NODE_OPERATOR: accounts.add(os.getenv("NODE_OPERATOR_PK")),
+        RISKPOOL_KEEPER: accounts.add(os.getenv("RISKPOOL_KEEPER_PK")),
+        RISKPOOL_WALLET: accounts.add(os.getenv("RISKPOOL_WALLET_PK")),
+        INVESTOR: accounts.add(os.getenv("INVESTOR_PK")),
+        PRODUCT_OWNER: accounts.add(os.getenv("PRODUCT_OWNER_PK")),
+        INSURER: accounts.add(os.getenv("INSURER_PK")),
+        CUSTOMER1: accounts.add(os.getenv("CUSTOMER1_PK")),
+        CUSTOMER2: accounts.add(os.getenv("CUSTOMER2_PK")),
+    }
+
+
 def stakeholders_accounts_ganache():
     # define stakeholder accounts    
     instanceOperator=accounts[0]
@@ -180,7 +204,7 @@ def stakeholders_accounts_ganache():
         INSTANCE_OPERATOR: instanceOperator,
         INSTANCE_WALLET: instanceWallet,
         ORACLE_PROVIDER: oracleProvider,
-        NODE_OPERATOR: chainlinkNodeOperator,
+        CHAINLINK_NODE_OPERATOR: chainlinkNodeOperator,
         RISKPOOL_KEEPER: riskpoolKeeper,
         RISKPOOL_WALLET: riskpoolWallet,
         INVESTOR: investor,
@@ -268,12 +292,6 @@ def _print_constants():
     print('required S [ETH]: {}'.format(REQUIRED_FUNDS_S / 10**18))
     print('required M [ETH]: {}'.format(REQUIRED_FUNDS_M / 10**18))
     print('required L [ETH]: {}'.format(REQUIRED_FUNDS_L / 10**18))
-
-def get_gas_price() -> int:
-    if web3.chain_id in CHAIN_IDS_WITH_GAS_PRICE:
-        return web3.eth.gas_price
-    
-    return GAS_PRICE
 
 def _get_balances(stakeholders_accounts):
     balance = {}
@@ -372,12 +390,20 @@ def all_in_1_base(
     registry_address=None,
     token_address=None,
     deploy_all=False,
-    publish_source=False
+    publish_source=False,
+    chainLinkTokenAddress=None,
+    chainLinkOracleAddress=None,
+    chainLinkJobId=None,
+    chainLinkPaymentAmount=None
 ):
     a = stakeholders_accounts or stakeholders_accounts_ganache()
 
     # assess balances at beginning of deploy
     balances_before = _get_balances(a)
+
+    print('--------------------------------------------------------------------')
+    print('inital balances: {}'.format(balances_before))
+    print('--------------------------------------------------------------------')
 
     # deploy full setup including tokens, and gif instance
     if deploy_all:
@@ -423,7 +449,7 @@ def all_in_1_base(
     instanceOperator = a[INSTANCE_OPERATOR]
     productOwner = a[PRODUCT_OWNER]
     oracleProvider = a[ORACLE_PROVIDER]
-    chainlinkNodeOperator=a[NODE_OPERATOR]
+    chainlinkNodeOperator=a[CHAINLINK_NODE_OPERATOR]
     riskpoolKeeper = a[RISKPOOL_KEEPER]
     riskpoolWallet = a[RISKPOOL_WALLET]
     investor = a[INVESTOR]
@@ -439,11 +465,15 @@ def all_in_1_base(
         productOwner,
         insurer,
         oracleProvider,
-        chainlinkNodeOperator,
         riskpoolKeeper,
         riskpoolWallet,
         investor,
         token,
+        chainlinkNodeOperator,
+        chainLinkTokenAddress=chainLinkTokenAddress,
+        chainLinkOracleAddress=chainLinkOracleAddress,
+        chainLinkJobId=chainLinkJobId,
+        chainLinkPaymentAmount=chainLinkPaymentAmount,
         name=base_name,
         publish_source=publish_source)
 
@@ -505,8 +535,8 @@ def all_in_1_base(
     print('setup after deploy {}'.format(delta_setup))
 
     print('--------------------------------------------------------------------')
-    print('total deploy + setup{}'.format(delta_total['total']))
-    print('deploy + setup{}'.format(delta_total))
+    print('total deploy + setup {}'.format(delta_total['total']))
+    print('deploy + setup {}'.format(delta_total))
 
     print('--------------------------------------------------------------------')
 
@@ -559,7 +589,6 @@ def get_bundle_id(tx):
 
 def get_process_id(tx):
     return tx.events['LogMetadataCreated']['processId']
-
 
 def get_address(name):
     if not exists('gif_instance_address.txt'):

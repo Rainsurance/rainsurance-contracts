@@ -1,4 +1,5 @@
 import time
+import os
 
 from brownie.network import accounts
 from brownie.network.account import Account
@@ -17,12 +18,10 @@ from scripts.deploy_product import (
     verify_deploy_base,
     from_component_base,
     from_registry_base,
-    stakeholders_accounts_ganache,
     fund_and_create_allowance,
     get_product_token,
     get_riskpool_token,
     get_bundle_id,
-    get_process_id,
     to_token_amount
 )
 
@@ -54,13 +53,25 @@ CONTRACT_CLASS_PRODUCT = RainProduct
 CONTRACT_CLASS_ORACLE = RainOracle
 CONTRACT_CLASS_RISKPOOL = RainRiskpool
 
-
 def help():
     print('from scripts.deploy_rain import all_in_1, verify_deploy')
     print('(customer, customer2, product, oracle, riskpool, riskpoolWallet, investor, usdc, instance, instanceService, instanceOperator, bundleId, riskId, processId, d) = all_in_1(deploy_all=True)')
     print('verify_deploy(d, usdc, product)')
     print('instanceService.getBundle(bundleId).dict()')
     print('instanceService.getPolicy(processId).dict()')
+
+
+def help_testnet():
+    print('======== deploy instructions for mumbai testnet ========')
+    print('Attention: in order for the following instructions to work you must have loaded the brownie console with the parameter --network=mumbai')
+    print('You can add the mumbai network by running: brownie networks add Ethereum Mumbai host=QUICKNODE_RPC_URL chainid=80001 explorer=https://api-testnet.polygonscan.com/api')
+    print('from scripts.deploy_rain import all_in_1, verify_deploy')
+    print('from scripts.deploy_product import stakeholders_accounts')
+    print("(customer, customer2, product, oracle, riskpool, riskpoolWallet, investor, usdc, instance, instanceService, instanceOperator, bundleId, riskId, processId, d) = all_in_1(stakeholders_accounts=stakeholders_accounts(), deploy_all=False, publish_source=True, chainLinkTokenAddress='0x326C977E6efc84E512bB9C30f76E30c160eD06FB', chainLinkOracleAddress='0x40193c8518BB267228Fc409a613bDbD8eC5a97b3', chainLinkJobId='ca98366cc7314957b8c012c72f05aeeb', chainLinkPaymentAmount=10**17)")
+    print('verify_deploy(d, usdc, product)')
+    print('instanceService.getBundle(bundleId).dict()')
+    print('instanceService.getPolicy(processId).dict()')
+    print('========================================================')
 
 
 def create_bundle(
@@ -128,15 +139,18 @@ def create_policy(
 
     tx = product.applyForPolicy(customer, premium_amount, sum_insured_amount, riskId, {'from': insurer})
 
-    return get_process_id(tx)
-
+    return tx.events['LogRainPolicyApplicationCreated']['policyId']
 
 def all_in_1(
     stakeholders_accounts=None,
     registry_address=None,
     usdc_address=None,
     deploy_all=False,
-    publish_source=False
+    publish_source=False,
+    chainLinkTokenAddress=None,
+    chainLinkOracleAddress=None,
+    chainLinkJobId=None,
+    chainLinkPaymentAmount=None
 ):
     return all_in_1_base(
         BASE_NAME,
@@ -151,8 +165,11 @@ def all_in_1(
         registry_address,
         usdc_address,
         deploy_all=deploy_all,
-        publish_source=publish_source
-    )
+        publish_source=publish_source,
+        chainLinkTokenAddress=chainLinkTokenAddress,
+        chainLinkOracleAddress=chainLinkOracleAddress,
+        chainLinkJobId=chainLinkJobId,
+        chainLinkPaymentAmount=chainLinkPaymentAmount)
 
 
 def verify_deploy(
