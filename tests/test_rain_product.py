@@ -230,9 +230,14 @@ def test_happy_path(
     assert product.policies(riskId[1]) == 1
     assert product.policies(s2b32('dummyRiskId')) == 0
 
+    assert product.processIds(customer) == 1
+    assert product.processIds(customer2) == 1
+
+    assert product.getProcessId(customer, 0) == policyId[0]
+    assert product.getProcessId(customer2, 0) == policyId[1] 
+
     assert product.getPolicyId(riskId[0], 0) == policyId[0]
     assert product.getPolicyId(riskId[1], 0) == policyId[1]
- 
 
     print('--- step trigger oracle (call chainlink node) -------------')
 

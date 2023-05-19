@@ -353,6 +353,9 @@ def test_process_policies_mix_batch_individual_processing(
     premium = [300]
     sumInsured = [2000]
 
+    with brownie.reverts('ERROR:RAIN-050:NO_POLICIES'):
+        product.getProcessId(customer, 0) == policyId[0]
+
     tx[0] = product.applyForPolicy(customer, premium[0], sumInsured[0], riskId[0], {'from': insurer})
     tx[1] = product.applyForPolicy(customer, premium[0], sumInsured[0], riskId[0], {'from': insurer})
     tx[2] = product.applyForPolicy(customer, premium[0], sumInsured[0], riskId[0], {'from': insurer})
@@ -421,6 +424,12 @@ def test_process_policies_mix_batch_individual_processing(
     print('sumInsured[0]: {}'.format(sumInsured[0]))
 
     assert product.policies(riskId[0]) == 5
+    assert product.processIds(customer) == 5
+    assert product.getProcessId(customer, 0) == policyId[0]
+    assert product.getProcessId(customer, 1) == policyId[1]
+    assert product.getProcessId(customer, 2) == policyId[2]
+    assert product.getProcessId(customer, 3) == policyId[3]
+    assert product.getProcessId(customer, 4) == policyId[4]    
 
     # try to process without insurer role
     with brownie.reverts('AccessControl: account 0x5aeda56215b167893e80b4fe645ba6d5bab767de is missing role 0xf098b7742e998f92a3c749f35e64ef555edcecec4b78a00c532a4f385915955b'):

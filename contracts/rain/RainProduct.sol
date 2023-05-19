@@ -55,6 +55,7 @@ contract RainProduct is
     mapping(bytes32 /* riskId */ => Risk) private _risks;
     mapping(bytes32 /* riskId */ => EnumerableSet.Bytes32Set /* processIds */) private _policies;
     bytes32 [] private _applications; // useful for debugging, might need to get rid of this
+    mapping(address /* policyHolder */ => bytes32 [] /* processIds */) private _processIdsForHolder; // hold list of applications/policies for address
 
     // events
     event LogRainPolicyApplicationCreated(bytes32 policyId, address policyHolder, uint256 premiumAmount, uint256 sumInsuredAmount);
@@ -192,6 +193,9 @@ contract RainProduct is
             applicationData);
 
         _applications.push(processId);
+
+        // remember for which policy holder this application is
+        _processIdsForHolder[policyHolder].push(processId);
 
         emit LogRainPolicyApplicationCreated(
             processId, 
@@ -482,6 +486,14 @@ contract RainProduct is
         return a <= b ? a : b;
     }
 
+    // function s2b(string memory input) public pure returns (bytes32 output) {
+    //     output = bytes32(abi.encodePacked(input));
+    // }
+
+    // function b2s(bytes32 input) public pure returns (string memory output) {
+    //     output = string(abi.encodePacked(input));
+    // }
+
     function risks() external view returns(uint256) { return _riskIds.length; }
     function getRiskId(uint256 idx) external view returns(bytes32 riskId) { return _riskIds[idx]; }
     function getRisk(bytes32 riskId) external view returns(Risk memory risk) { return _risks[riskId]; }
@@ -498,6 +510,23 @@ contract RainProduct is
     }
     function getPolicyId(bytes32 riskId, uint256 policyIdx) external view returns(bytes32 processId) {
         return EnumerableSet.at(_policies[riskId], policyIdx);
+    }
+
+    function processIds(address policyHolder)
+        external 
+        view
+        returns(uint256 numberOfProcessIds)
+    {
+        return _processIdsForHolder[policyHolder].length;
+    }
+
+    function getProcessId(address policyHolder, uint256 idx)
+        external 
+        view
+        returns(bytes32 processId)
+    {
+        require(_processIdsForHolder[policyHolder].length > 0, "ERROR:RAIN-050:NO_POLICIES");
+        return _processIdsForHolder[policyHolder][idx];
     }
 
     function getOracleId() external view returns (uint256 oracleId) {
