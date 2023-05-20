@@ -97,7 +97,7 @@ class GifOracle(object):
                 chainLinkOracleAddress)
 
         if chainLinkJobId is None:
-            chainLinkJobId = s2b32('1')
+            chainLinkJobId = '1'
 
         if chainLinkPaymentAmount is None:
             chainLinkPaymentAmount = 0
@@ -110,7 +110,7 @@ class GifOracle(object):
             instance.getRegistry(),
             chainLinkTokenAddress,
             chainLinkOracleAddress,
-            chainLinkJobId,
+            s2b32(chainLinkJobId),
             chainLinkPaymentAmount,
             {'from': oracleProvider},
             publish_source=publish_source)
