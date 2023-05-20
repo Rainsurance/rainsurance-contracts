@@ -71,6 +71,7 @@ def help_testnet():
     print('verify_deploy(d, usdc, product)')
     print('instanceService.getBundle(bundleId).dict()')
     print('instanceService.getPolicy(processId).dict()')
+    print('Attention: do not forget to fund the Oracle Contract with some LINK token! https://faucets.chain.link/mumbai')
     print('========================================================')
 
 

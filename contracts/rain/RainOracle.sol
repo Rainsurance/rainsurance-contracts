@@ -83,6 +83,7 @@ contract RainOracle is
             requestUrl
         );
         req.add("path", "result");
+        req.addInt("times", 1); // Multiply by times value to remove decimals. Parameter required so pass '1' if the number returned doesn't have decimals
 
         bytes32 chainlinkRequestId = sendChainlinkRequest(req, payment);
 

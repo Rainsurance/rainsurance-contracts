@@ -230,8 +230,29 @@ def test_happy_path(
     assert product.policies(riskId[1]) == 1
     assert product.policies(s2b32('dummyRiskId')) == 0
 
-    assert product.processIds(customer) == 1
-    assert product.processIds(customer2) == 1
+    assert len(product.processIdsForHolder(customer)) == 1
+    assert len(product.processIdsForHolder(customer2)) == 1
+
+    processForHolder = product.processForHolder(customer, 0)
+    processForHolder2 = product.processForHolder(customer2, 0)
+
+    print('processForHolder {}'.format(processForHolder))
+    print('processForHolder2 {}'.format(processForHolder2))
+
+    assert processForHolder['processId'] == policyId[0]
+    assert processForHolder2['processId'] == policyId[1]
+    assert processForHolder['riskId'] == riskId[0]
+    assert processForHolder2['riskId'] == riskId[1]
+    assert processForHolder['startDate'] == startDate
+    assert processForHolder2['startDate'] == startDate
+    assert processForHolder['endDate'] == endDate
+    assert processForHolder2['endDate'] == endDate
+    assert processForHolder['placeId'] == placeId[0]
+    assert processForHolder2['placeId'] == placeId[1]
+    assert processForHolder['aph'] == aph[0]
+    assert processForHolder2['aph'] == aph[1]
+    assert processForHolder['sumInsured'] == sumInsured[0]
+    assert processForHolder2['sumInsured'] == sumInsured[1]
 
     assert product.getProcessId(customer, 0) == policyId[0]
     assert product.getProcessId(customer2, 0) == policyId[1] 

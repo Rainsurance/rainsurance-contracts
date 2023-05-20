@@ -46,6 +46,15 @@ contract RainProduct is
         uint256 createdAt;
         uint256 updatedAt;
     }
+    struct Process {
+        bytes32 riskId;
+        bytes32 processId;
+        uint256 startDate;
+        uint256 endDate;
+        bytes32 placeId;
+        uint256 aph;
+        uint256 sumInsured;
+    }
 
     uint256 private _oracleId;
     IERC20 private _token;
@@ -55,7 +64,8 @@ contract RainProduct is
     mapping(bytes32 /* riskId */ => Risk) private _risks;
     mapping(bytes32 /* riskId */ => EnumerableSet.Bytes32Set /* processIds */) private _policies;
     bytes32 [] private _applications; // useful for debugging, might need to get rid of this
-    mapping(address /* policyHolder */ => bytes32 [] /* processIds */) private _processIdsForHolder; // hold list of applications/policies for address
+    mapping(address /* policyHolder */ => bytes32 [] /* processIds */) private _processIdsForHolder; // hold list of applications/policies Ids for address
+    mapping(address /* policyHolder */ => Process [] /* processIds */) private _processesForHolder; // hold list of applications/policies for address
 
     // events
     event LogRainPolicyApplicationCreated(bytes32 policyId, address policyHolder, uint256 premiumAmount, uint256 sumInsuredAmount);
@@ -196,6 +206,16 @@ contract RainProduct is
 
         // remember for which policy holder this application is
         _processIdsForHolder[policyHolder].push(processId);
+        _processesForHolder[policyHolder].push(
+            Process(
+                risk.id, 
+                processId, 
+                risk.startDate, 
+                risk.endDate, 
+                risk.placeId, 
+                risk.aph,
+                sumInsured)
+        );
 
         emit LogRainPolicyApplicationCreated(
             processId, 
@@ -512,12 +532,20 @@ contract RainProduct is
         return EnumerableSet.at(_policies[riskId], policyIdx);
     }
 
-    function processIds(address policyHolder)
+    function processIdsForHolder(address policyHolder)
         external 
         view
-        returns(uint256 numberOfProcessIds)
+        returns(bytes32[] memory)
     {
-        return _processIdsForHolder[policyHolder].length;
+        return _processIdsForHolder[policyHolder];
+    }
+
+    function processForHolder(address policyHolder, uint256 processIdx)
+        external 
+        view
+        returns(Process memory)
+    {
+        return _processesForHolder[policyHolder][processIdx];
     }
 
     function getProcessId(address policyHolder, uint256 idx)
