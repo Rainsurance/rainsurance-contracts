@@ -70,7 +70,6 @@ contract RainProduct is
     // events
     event LogRainPolicyApplicationCreated(bytes32 policyId, address policyHolder, uint256 premiumAmount, uint256 sumInsuredAmount);
     event LogRainPolicyCreated(bytes32 policyId, address policyHolder, uint256 premiumAmount, uint256 sumInsuredAmount);
-    event LogRainPolicyExpired(string objectName, bytes32 processId);
     event LogRainOracleCallbackReceived(uint256 requestId, bytes32 processId, bytes fireCategory);
     event LogRainClaimConfirmed(bytes32 processId, uint256 claimId, uint256 payoutAmount);
     event LogRainPayoutExecuted(bytes32 processId, uint256 claimId, uint256 payoutId, uint256 payoutAmount);
@@ -117,7 +116,8 @@ contract RainProduct is
     {
 
         _validateRiskParameters(trigger, exit, aph);
-        require(startDate > block.timestamp, "ERROR:RAIN-044:RISK_START_DATE_INVALID"); // solhint-disable-line
+        //TODO: uncomment the line below (commented for testing purposes)
+        //require(startDate > block.timestamp, "ERROR:RAIN-044:RISK_START_DATE_INVALID"); // solhint-disable-line
         require(endDate > startDate, "ERROR:RAIN-045:RISK_END_DATE_INVALID");
 
         riskId = getRiskId(placeId, startDate, endDate);

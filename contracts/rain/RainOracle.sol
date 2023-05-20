@@ -19,7 +19,7 @@ contract RainOracle is
     bytes32 private jobId;
     uint256 private payment;
 
-    event LogRainRequest(uint256 requestId, bytes32 chainlinkRequestId);
+    event LogRainRequest(uint256 requestId, bytes32 chainlinkRequestId, string requestUrl);
     
     event LogRainFulfill(
         uint256 requestId, 
@@ -88,7 +88,7 @@ contract RainOracle is
         bytes32 chainlinkRequestId = sendChainlinkRequest(req, payment);
 
         gifRequests[chainlinkRequestId] = gifRequestId;
-        emit LogRainRequest(gifRequestId, chainlinkRequestId);
+        emit LogRainRequest(gifRequestId, chainlinkRequestId, requestUrl);
     }
 
     function prepareRequestUrl(
@@ -147,7 +147,7 @@ contract RainOracle is
         pure
         returns(bytes memory parameterData)
     {
-        //TODO: for now I'm just ignoring the extra parameters in order to not the break the tests. If they aren't really needed, better remove them.
+        //TODO: for now I'm just ignoring the extra parameters so as not to break the tests. If they are not really needed, then it is better to remove them.
         return abi.encode(
             chainlinkRequestId, 
             aaay
