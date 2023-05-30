@@ -38,7 +38,7 @@ LAT_FLOAT = -23.550620
 LONG_FLOAT = -46.634370
 TRIGGER = 0.1
 EXIT = 1.0
-APH = 5.0
+PRECIP_HIST = 5.0
 
 # default setup for all_in_1 -> create_bundle
 BUNDLE_FUNDING = 10 ** 6
@@ -112,11 +112,12 @@ def create_risk(
     long = LONG_FLOAT,
     trigger = TRIGGER,
     exit = EXIT,
-    aph = APH
+    precHist = PRECIP_HIST
 ):    
     multiplier = product.getPercentageMultiplier()
     coordMultiplier = product.getCoordinatesMultiplier()
-    tx = product.createRisk(startDate, endDate, placeId, coordMultiplier * lat, coordMultiplier * long, multiplier * trigger, multiplier * exit, aph, {'from': insurer})
+    precMultiplier = product.getPrecipitationMultiplier()
+    tx = product.createRisk(startDate, endDate, placeId, coordMultiplier * lat, coordMultiplier * long, multiplier * trigger, multiplier * exit, precHist * precMultiplier, {'from': insurer})
     return tx.events['LogRainRiskDataCreated']['riskId']
 
 def create_policy(

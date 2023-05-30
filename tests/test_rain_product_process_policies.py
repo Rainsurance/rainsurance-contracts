@@ -110,15 +110,16 @@ def test_process_policies_for_risk(
 
     multiplier = product.getPercentageMultiplier()
     coordMultiplier = product.getCoordinatesMultiplier()
+    precMultiplier = product.getPrecipitationMultiplier()
 
     trigger = multiplier * triggerFloat
     exit = multiplier * exitFloat
     lat = [coordMultiplier * latFloat[0], coordMultiplier * latFloat[1]]
     long = [coordMultiplier * longFloat[0], coordMultiplier * longFloat[1]]
-    aph = [aphFloat[0], aphFloat[1]]
+    precHist = [precMultiplier * aphFloat[0], precMultiplier * aphFloat[1]]
 
     tx = [None, None, None, None, None]
-    tx[0] = product.createRisk(startDate, endDate, placeId[0], lat[0], long[0], trigger, exit, aph[0], {'from': insurer})
+    tx[0] = product.createRisk(startDate, endDate, placeId[0], lat[0], long[0], trigger, exit, precHist[0], {'from': insurer})
 
     riskId = [None, None, None, None, None]
     riskId = [tx[0].return_value]
@@ -187,9 +188,9 @@ def test_process_policies_for_risk(
     assert risk['id'] == riskId[0]
     assert risk['createdAt'] > 0
     assert risk['responseAt'] == 0
-    assert risk['aaay'] == 0
+    assert risk['precActual'] == 0
 
-    aaay = 1.0
+    precActual = 1.0
 
     data = [None, None]
     data[0] = oracle.encodeFulfillParameters(
@@ -197,7 +198,7 @@ def test_process_policies_for_risk(
         placeId[0],
         startDate, 
         endDate, 
-        aaay
+        precActual
     )
 
     # simulate callback from oracle node with call to chainlink operator contract
@@ -213,7 +214,7 @@ def test_process_policies_for_risk(
     print(tx[0].info())
 
     # focus checks on oracle 1 response
-    # verify in log entry that aaay data properly arrives in rain product cotract
+    # verify in log entry that precActual data properly arrives in rain product cotract
     assert 'LogRainRiskDataReceived' in tx[0].events
     assert len(tx[0].events['LogRainRiskDataReceived']) == 1
 
@@ -221,14 +222,14 @@ def test_process_policies_for_risk(
     print('rain requestEvent {}'.format(receivedEvent))
     assert receivedEvent['requestId'] == requestId[0]
     assert receivedEvent['riskId'] == riskId[0]
-    assert receivedEvent['aaay'] == aaay
+    assert receivedEvent['precActual'] == precActual
 
-    # verify in risk that aaay data properly arrives in rain product cotract
+    # verify in risk that precActual data properly arrives in rain product cotract
     risk = product.getRisk(riskId[0]).dict()
     print('risk {}'.format(risk))
     assert risk['id'] == riskId[0]
     assert risk['responseAt'] > risk['createdAt']
-    assert risk['aaay'] == aaay
+    assert risk['precActual'] == precActual
 
 
     print('--- step test process policies (risk[0]) -----------------')
@@ -325,15 +326,16 @@ def test_process_policies_mix_batch_individual_processing(
 
     multiplier = product.getPercentageMultiplier()
     coordMultiplier = product.getCoordinatesMultiplier()
+    precMultiplier = product.getPrecipitationMultiplier()
 
     trigger = multiplier * triggerFloat
     exit = multiplier * exitFloat
     lat = [coordMultiplier * latFloat[0], coordMultiplier * latFloat[1]]
     long = [coordMultiplier * longFloat[0], coordMultiplier * longFloat[1]]
-    aph = [aphFloat[0], aphFloat[1]]
+    precHist = [precMultiplier * aphFloat[0], precMultiplier * aphFloat[1]]
 
     tx = [None, None, None, None, None]
-    tx[0] = product.createRisk(startDate, endDate, placeId[0], lat[0], long[0], trigger, exit, aph[0], {'from': insurer})
+    tx[0] = product.createRisk(startDate, endDate, placeId[0], lat[0], long[0], trigger, exit, precHist[0], {'from': insurer})
 
     riskId = [None, None, None, None, None]
     riskId = [tx[0].return_value]
@@ -387,7 +389,7 @@ def test_process_policies_mix_batch_individual_processing(
 
     risk = product.getRisk(riskId[0]).dict()
 
-    aaay = 1.0
+    precActual = 1.0
 
     data = [None, None]
     data[0] = oracle.encodeFulfillParameters(
@@ -395,7 +397,7 @@ def test_process_policies_mix_batch_individual_processing(
         placeId[0],
         startDate, 
         endDate, 
-        aaay
+        precActual
     )
 
     # simulate callback from oracle node with call to chainlink operator contract
@@ -413,7 +415,7 @@ def test_process_policies_mix_batch_individual_processing(
     receivedEvent = tx[0].events['LogRainRiskDataReceived'][0]
     print('rain requestEvent {}'.format(receivedEvent))
 
-    # verify in risk that aaay data properly arrives in rain product cotract
+    # verify in risk that precActual data properly arrives in rain product cotract
     risk = product.getRisk(riskId[0]).dict()
     print('risk {}'.format(risk))
 

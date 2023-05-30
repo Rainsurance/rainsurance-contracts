@@ -159,14 +159,17 @@ def prepare_risk(product, insurer):
     longFloat = -46.634370
     triggerFloat = 0.1 # %
     exitFloat = 1.0 # %
-    aph = 1.0 # mm
+    precHistFloat = 1.0 # mm
     
     multiplier = product.getPercentageMultiplier()
     coordMultiplier = product.getCoordinatesMultiplier()
+    precMultiplier = product.getPrecipitationMultiplier()
+    
     lat = latFloat * coordMultiplier
     long = longFloat * coordMultiplier
     trigger = multiplier * triggerFloat
     exit = multiplier * exitFloat
+    precHist = precMultiplier * precHistFloat
 
-    tx = product.createRisk(startDate, endDate, placeId, lat, long, trigger, exit, aph, {'from': insurer})
+    tx = product.createRisk(startDate, endDate, placeId, lat, long, trigger, exit, precHist, {'from': insurer})
     return tx.return_value

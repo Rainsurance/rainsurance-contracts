@@ -24,7 +24,7 @@ contract RainOracle is
     event LogRainFulfill(
         uint256 requestId, 
         bytes32 chainlinkRequestId, 
-        uint256 aaay
+        uint256 precActual
     );
 
     constructor(
@@ -114,17 +114,17 @@ contract RainOracle is
 
     function fulfill(
         bytes32 chainlinkRequestId, 
-        uint256 aaay
+        uint256 precActual
     )
         public recordChainlinkFulfillment(chainlinkRequestId) 
     {
         uint256 gifRequest = gifRequests[chainlinkRequestId];
         
-        bytes memory data =  abi.encode(aaay);
+        bytes memory data =  abi.encode(precActual);
         _respond(gifRequest, data);
 
         delete gifRequests[chainlinkRequestId];
-        emit LogRainFulfill(gifRequest, chainlinkRequestId, aaay);
+        emit LogRainFulfill(gifRequest, chainlinkRequestId, precActual);
     }
 
     function cancel(uint256 requestId)
@@ -141,7 +141,7 @@ contract RainOracle is
         bytes32 placeId, 
         uint256 startDate, 
         uint256 endDate, 
-        uint256 aaay
+        uint256 precActual
     ) 
         external
         pure
@@ -150,7 +150,7 @@ contract RainOracle is
         //TODO: for now I'm just ignoring the extra parameters so as not to break the tests. If they are not really needed, then it is better to remove them.
         return abi.encode(
             chainlinkRequestId, 
-            aaay
+            precActual
         );
     }
 

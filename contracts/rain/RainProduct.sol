@@ -24,9 +24,10 @@ contract RainProduct is
 
     uint256 public constant COORD_MULTIPLIER = 10**6;
     uint256 public constant PERCENTAGE_MULTIPLIER = 2**24;
+    uint256 public constant PRECIPITATION_MULTIPLIER = 100;
 
-    uint256 public constant AAAY_MIN = 0;
-    uint256 public constant AAAY_MAX = 1000;
+    uint256 public constant PRECIPITATION_MIN = 0;
+    uint256 public constant PRECIPITATION_MAX = 1000;
     
     struct Risk {
         bytes32 id; // hash over placeId, start, end
@@ -37,12 +38,14 @@ contract RainProduct is
         int256 long;
         uint256 trigger;  // at and bellow this precipitation no payout is made (%)
         uint256 exit; // at and above this precipitation the max payout is made (%)
-        uint256 aph; // historical precipitation for placeId (mm)
+        uint256 precHist; // ~aph - historical average precipitation for placeId / period (mm)
+        uint256 precDays; // minimum number of rainy days for the risk to be valid (#)
         uint256 requestId; 
         bool requestTriggered;
         uint256 responseAt;
-        uint256 aaay;  // actual precipitation for placeId in the current period (mm)
-        uint256 payoutPercentage; // payout percentage for placeId in the current period (%)
+        uint256 precActual; // ~aaay - actual average precipitation for placeId / current period (mm)
+        uint256 precDaysActual; // actual number of rainy days (#)
+        uint256 payoutPercentage; // payout percentage for placeId / current period (%)
         uint256 createdAt;
         uint256 updatedAt;
     }
@@ -52,7 +55,7 @@ contract RainProduct is
         uint256 startDate;
         uint256 endDate;
         bytes32 placeId;
-        uint256 aph;
+        uint256 precHist;
         uint256 sumInsured;
     }
 
@@ -80,7 +83,7 @@ contract RainProduct is
     event LogRainPayoutCreated(bytes32 policyId, uint256 payoutAmount);
     event LogRainRiskDataRequested(uint256 requestId, bytes32 riskId, bytes32 placeId, uint256 startDate, uint256 endDate);
     event LogRainRiskDataRequestCancelled(bytes32 processId, uint256 requestId);
-    event LogRainRiskDataReceived(uint256 requestId, bytes32 riskId, uint256 aaay);
+    event LogRainRiskDataReceived(uint256 requestId, bytes32 riskId, uint256 precActual);
 
 
     constructor(
@@ -108,16 +111,16 @@ contract RainProduct is
         int256 long,
         uint256 trigger,
         uint256 exit,
-        uint256 aph
+        uint256 precHist
     )
         external
         onlyRole(INSURER_ROLE)
         returns(bytes32 riskId)
     {
 
-        _validateRiskParameters(trigger, exit, aph);
+        _validateRiskParameters(trigger, exit);
         //TODO: uncomment the line below (commented for testing purposes)
-        //require(startDate > block.timestamp, "ERROR:RAIN-044:RISK_START_DATE_INVALID"); // solhint-disable-line
+        require(startDate > block.timestamp, "ERROR:RAIN-044:RISK_START_DATE_INVALID"); // solhint-disable-line
         require(endDate > startDate, "ERROR:RAIN-045:RISK_END_DATE_INVALID");
 
         riskId = getRiskId(placeId, startDate, endDate);
@@ -134,7 +137,7 @@ contract RainProduct is
         risk.long = long;
         risk.trigger = trigger;
         risk.exit = exit;
-        risk.aph = aph;
+        risk.precHist = precHist;
         risk.createdAt = block.timestamp; // solhint-disable-line
         risk.updatedAt = block.timestamp; // solhint-disable-line
 
@@ -149,12 +152,12 @@ contract RainProduct is
         bytes32 riskId,
         uint256 trigger,
         uint256 exit,
-        uint256 aph
+        uint256 precHist
     )
         external
         onlyRole(INSURER_ROLE)
     {
-        _validateRiskParameters(trigger, exit, aph);
+        _validateRiskParameters(trigger, exit);
 
         Risk storage risk = _risks[riskId];
         require(risk.createdAt > 0, "ERROR:RAIN-002:RISK_UNKNOWN");
@@ -162,7 +165,7 @@ contract RainProduct is
         
         risk.trigger = trigger;
         risk.exit = exit;
-        risk.aph = aph;
+        risk.precHist = precHist;
         risk.updatedAt = block.timestamp; // solhint-disable-line
     }
 
@@ -213,7 +216,7 @@ contract RainProduct is
                 risk.startDate, 
                 risk.endDate, 
                 risk.placeId, 
-                risk.aph,
+                risk.precHist,
                 sumInsured)
         );
 
@@ -363,7 +366,7 @@ contract RainProduct is
         onlyOracle
     {
 
-        (uint256 aaay) = abi.decode(responseData, (uint256));
+        (uint256 precActual) = abi.decode(responseData, (uint256));
 
         bytes32 riskId = _getRiskId(processId);
 
@@ -371,15 +374,15 @@ contract RainProduct is
         require(risk.createdAt > 0, "ERROR:RAIN-021:RISK_UNDEFINED");
         require(risk.requestId == requestId, "ERROR:RAIN-022:REQUEST_ID_MISMATCH");
         require(risk.responseAt == 0, "ERROR:RAIN-023:EXISTING_CALLBACK");
-        require(aaay >= AAAY_MIN && aaay < AAAY_MAX, "ERROR:RAIN-024:AAAY_INVALID");
+        require(precActual >= PRECIPITATION_MIN && precActual < PRECIPITATION_MAX, "ERROR:RAIN-024:AAAY_INVALID");
 
-        // update risk using aaay info
-        risk.aaay = aaay;
+        // update risk using precActual info
+        risk.precActual = precActual;
         risk.payoutPercentage = calculatePayoutPercentage(
             risk.trigger,
             risk.exit,
-            risk.aph,
-            risk.aaay
+            risk.precHist,
+            risk.precActual
         );
 
         risk.responseAt = block.timestamp; // solhint-disable-line
@@ -388,7 +391,7 @@ contract RainProduct is
         emit LogRainRiskDataReceived(
             requestId, 
             riskId,
-            aaay);
+            precActual);
     }
 
     function processPoliciesForRisk(bytes32 riskId, uint256 batchSize)
@@ -476,17 +479,17 @@ contract RainProduct is
     function calculatePayoutPercentage(
         uint256 trigger, // at and bellow this precipitation no payout is made (%)
         uint256 exit, // at and above this precipitation the max payout is made (%)
-        uint256 aph, // historical precipitation for placeId (mm)
-        uint256 aaay // actual precipitation for placeId in the current period (mm)
+        uint256 precHist, // historical precipitation for placeId (mm)
+        uint256 precActual // actual precipitation for placeId in the current period (mm)
     )
         public
         pure
         returns(uint256 payoutPercentage)
     {
-        if (aaay <= aph) {
+        if (precActual <= precHist) {
             return 0;
         }
-        uint256 extra = PERCENTAGE_MULTIPLIER * (aaay - aph) / aph;
+        uint256 extra = PERCENTAGE_MULTIPLIER * (precActual - precHist) / precHist;
         if (extra <= trigger) {
             return 0;
         }
@@ -500,6 +503,10 @@ contract RainProduct is
 
     function getCoordinatesMultiplier() external pure returns(uint256 multiplier) {
         return COORD_MULTIPLIER;
+    }
+
+    function getPrecipitationMultiplier() external pure returns(uint256 multiplier) {
+        return PRECIPITATION_MULTIPLIER;
     }
 
     function min(uint256 a, uint256 b) private pure returns (uint256) {
@@ -563,14 +570,13 @@ contract RainProduct is
 
     function _validateRiskParameters(
         uint256 trigger, 
-        uint256 exit,
-        uint256 aph
+        uint256 exit
     )
         internal pure
     {
         require(trigger <= PERCENTAGE_MULTIPLIER, "ERROR:RAIN-041:RISK_TRIGGER_TOO_LARGE");
         require(exit > trigger, "ERROR:RAIN-042:RISK_EXIT_NOT_LARGER_THAN_TRIGGER");
-        require(aph > 0, "ERROR:RAIN-043:RISK_APH_ZERO_INVALID");
+        //require(precHist >= 0, "ERROR:RAIN-043:RISK_APH_ZERO_INVALID");
     }
 
     function _getRiskId(bytes32 processId) private view returns(bytes32 riskId) {

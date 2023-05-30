@@ -68,14 +68,15 @@ def test_trigger_and_cancel_oracle_requests(
     
     multiplier = product.getPercentageMultiplier()
     coordMultiplier = product.getCoordinatesMultiplier()
+    precMultiplier = product.getPrecipitationMultiplier()
 
     trigger = multiplier * triggerFloat
     exit = multiplier * exitFloat
     lat = coordMultiplier * latFloat
     long = coordMultiplier * longFloat
-    aph = aphFloat
+    precHist = precMultiplier * aphFloat
     
-    tx = product.createRisk(startDate, endDate, placeId, lat, long, trigger, exit, aph, {'from': insurer})
+    tx = product.createRisk(startDate, endDate, placeId, lat, long, trigger, exit, precHist, {'from': insurer})
     riskId = tx.return_value
 
     customerFunding = 500
@@ -103,14 +104,14 @@ def test_trigger_and_cancel_oracle_requests(
 
     risk = product.getRisk(riskId).dict()
 
-    aaay = 1.0
+    precActual = 1.0
 
     data = oracle.encodeFulfillParameters(
         clRequestEvent['requestId'], 
         placeId,
         startDate, 
         endDate, 
-        aaay
+        precActual
     )
 
     # simulate callback from oracle node with call to chainlink operator contract
@@ -145,7 +146,7 @@ def test_trigger_and_cancel_oracle_requests(
         placeId,
         startDate, 
         endDate, 
-        aaay
+        precActual
     )
 
     # simulate callback from oracle node with call to chainlink operator contract
@@ -169,7 +170,7 @@ def test_trigger_and_cancel_oracle_requests(
     assert risk['id'] == riskId
     assert risk['requestId'] == requestId2
     assert risk['responseAt'] > risk['createdAt']
-    assert risk['aaay'] == aaay
+    assert risk['precActual'] == precActual
 
     # check if triggering the same risk twice works
     with brownie.reverts('ERROR:RAIN-011:ORACLE_ALREADY_RESPONDED'):
@@ -218,14 +219,15 @@ def test_oracle_responds_with_invalid_aaay(
     
     multiplier = product.getPercentageMultiplier()
     coordMultiplier = product.getCoordinatesMultiplier()
+    precMultiplier = product.getPrecipitationMultiplier()
 
     trigger = multiplier * triggerFloat
     exit = multiplier * exitFloat
     lat = coordMultiplier * latFloat
     long = coordMultiplier * longFloat
-    aph = aphFloat
+    precHist = precMultiplier * aphFloat
     
-    tx = product.createRisk(startDate, endDate, placeId, lat, long, trigger, exit, aph, {'from': insurer})
+    tx = product.createRisk(startDate, endDate, placeId, lat, long, trigger, exit, precHist, {'from': insurer})
     riskId = tx.return_value
 
     customerFunding = 500
@@ -251,23 +253,23 @@ def test_oracle_responds_with_invalid_aaay(
     print('oracle request triggered'.format(tx.info()))
     assert requestId == 0
 
-    print('--- oracle node answers with invalid aaay ----------------------------')
+    print('--- oracle node answers with invalid precActual ----------------------------')
 
     risk = product.getRisk(riskId).dict()
     print('risk after triggering oracle call before oracle callback {}'.format(risk))
     assert risk['requestTriggered'] == True
     assert risk['responseAt'] == 0
 
-    # create oracle response with aaay value out of range
-    # aaay value selected triggers a payout
-    aaay = 2000
+    # create oracle response with precActual value out of range
+    # precActual value selected triggers a payout
+    precActual = 2000
 
     data = oracle.encodeFulfillParameters(
         clRequestEvent['requestId'], 
         placeId,
         startDate, 
         endDate, 
-        aaay
+        precActual
     )
 
     # simulate callback from oracle node with call to chainlink operator contract
@@ -331,7 +333,7 @@ def test_oracle_responds_with_invalid_aaay(
     assert risk['requestTriggered'] == True
     assert risk['requestId'] == 1
     assert risk['responseAt'] > 0
-    assert risk['aaay'] == validAaay
+    assert risk['precActual'] == validAaay
 
     print('--- attempt to repeat trigger once more ----------------------------')
 
