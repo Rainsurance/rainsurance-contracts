@@ -8,6 +8,7 @@
     "terminal.integrated.defaultProfile.linux": "zsh",
     "solidity.remappingsUnix": [
         "@openzeppelin/=/home/vscode/.brownie/packages/OpenZeppelin/openzeppelin-contracts@4.7.3",
+        "@openzeppelin/contracts-upgradeable/=/home/vscode/.brownie/packages/OpenZeppelin/openzeppelin-contracts-upgradeable@4.7.3",
         "@chainlink/=/home/vscode/.brownie/packages/smartcontractkit/chainlink@1.6.0",
         "@etherisc/gif-interface/=/home/vscode/.brownie/packages/etherisc/gif-interface@6da625a",
         "@etherisc/gif-contracts/=/home/vscode/.brownie/packages/etherisc/gif-contracts@59d9a94",

@@ -156,7 +156,7 @@ def test_process_policies_for_risk(
 
     print('--- step trigger oracle (call chainlin node) -------------')
 
-    tx[0] = product.triggerOracle(policyId[0], {'from': insurer})
+    tx[0] = product.triggerOracle(policyId[0], "", "", {'from': insurer})
     requestId = [tx[0].return_value] 
 
     # ensure event emitted as chainlink client
@@ -370,7 +370,7 @@ def test_process_policies_mix_batch_individual_processing(
 
     print('--- step trigger oracle (call chainlin node) -------------')
 
-    tx[0] = product.triggerOracle(policyId[0], {'from': insurer})
+    tx[0] = product.triggerOracle(policyId[0], "", "", {'from': insurer})
     requestId = [tx[0].return_value] 
 
     # check event attributes

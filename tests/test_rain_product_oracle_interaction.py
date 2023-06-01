@@ -89,7 +89,7 @@ def test_trigger_and_cancel_oracle_requests(
 
     print('--- step trigger oracle (call chainlin node) -------------')
 
-    tx = product.triggerOracle(processId, {'from': insurer})
+    tx = product.triggerOracle(processId, "", "", {'from': insurer})
     requestId = tx.return_value
     clRequestEvent = tx.events['OracleRequest'][0]
 
@@ -132,7 +132,7 @@ def test_trigger_and_cancel_oracle_requests(
     print('--- oracle node triggering for 2nd time ----------------------------')
 
     # check if processId (risk) can now be triggered a second time
-    tx = product.triggerOracle(processId, {'from': insurer})
+    tx = product.triggerOracle(processId, "", "", {'from': insurer})
     requestId2 = tx.return_value
     clRequestEvent2 = tx.events['OracleRequest'][0]
 
@@ -174,7 +174,7 @@ def test_trigger_and_cancel_oracle_requests(
 
     # check if triggering the same risk twice works
     with brownie.reverts('ERROR:RAIN-011:ORACLE_ALREADY_RESPONDED'):
-        product.triggerOracle(processId, {'from': insurer})
+        product.triggerOracle(processId, "", "", {'from': insurer})
 
 
 
@@ -246,7 +246,7 @@ def test_oracle_responds_with_invalid_aaay(
     assert risk['requestId'] == 0
     assert risk['responseAt'] == 0
 
-    tx = product.triggerOracle(processId, {'from': insurer})
+    tx = product.triggerOracle(processId, "", "", {'from': insurer})
     requestId = tx.return_value
     clRequestEvent = tx.events['OracleRequest'][0]
 
@@ -292,7 +292,7 @@ def test_oracle_responds_with_invalid_aaay(
 
     print('--- repeat trigger/response with valid aaaay ----------------------------')
 
-    tx = product.triggerOracle(processId, {'from': insurer})
+    tx = product.triggerOracle(processId, "", "", {'from': insurer})
     requestId = tx.return_value
     clRequestEvent = tx.events['OracleRequest'][0]
 
@@ -338,7 +338,7 @@ def test_oracle_responds_with_invalid_aaay(
     print('--- attempt to repeat trigger once more ----------------------------')
 
     with brownie.reverts('ERROR:RAIN-011:ORACLE_ALREADY_RESPONDED'):
-        product.triggerOracle(processId, {'from': insurer})
+        product.triggerOracle(processId, "", "", {'from': insurer})
 
 
 def test_oracle_getters(gifProduct: GifProduct):
