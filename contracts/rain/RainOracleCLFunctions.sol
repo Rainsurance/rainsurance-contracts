@@ -8,8 +8,7 @@ import "@etherisc/gif-interface/contracts/components/Oracle.sol";
 import {Functions, FunctionsClient} from "./../cl-functions/dev/functions/FunctionsClient.sol";
 
 contract RainOracleCLFunctions is 
-    Oracle, 
-    FunctionsClient
+    Oracle, FunctionsClient
 {
     using strings for bytes32;
     using Functions for Functions.Request;
