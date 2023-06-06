@@ -304,7 +304,7 @@ contract RainProduct is
         _adjustPremiumSumInsured(processId, expectedPremiumAmount, sumInsuredAmount);
     }
 
-    function triggerOracle(bytes32 processId, bytes memory secrets, string memory source) 
+    function triggerOracle(bytes32 processId, bytes calldata secrets, string calldata source) 
         external
         onlyRole(INSURER_ROLE)
         returns(uint256 requestId)

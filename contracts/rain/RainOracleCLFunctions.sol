@@ -174,6 +174,10 @@ contract RainOracleCLFunctions is
         );
     }
 
+    function updateGasLimit(uint32 _gasLimit) external onlyOwner {
+        gasLimit = _gasLimit;
+    }
+
     /**
     * @notice Allows the Functions oracle address to be updated
     *
