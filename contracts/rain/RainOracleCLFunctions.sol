@@ -5,28 +5,45 @@ import "../strings.sol";
 
 import "@openzeppelin/contracts/utils/Strings.sol";
 import "@etherisc/gif-interface/contracts/components/Oracle.sol";
-import {Functions, FunctionsClient} from "./../cl-functions/dev/functions/FunctionsClient.sol";
+import {Functions, FunctionsClient} from "./../functions/dev/functions/FunctionsClient.sol";
+import {AutomationCompatibleInterface} from "./../automation/AutomationCompatible.sol";
 
 contract RainOracleCLFunctions is 
-    Oracle, FunctionsClient
+    Oracle,
+    FunctionsClient,
+    AutomationCompatibleInterface
 {
     using strings for bytes32;
     using Functions for Functions.Request;
 
     mapping(bytes32 /* Chainlink request ID */ => uint256 /* GIF request ID */) public gifRequests;
-    uint64 private subscriptionId;
-    uint32 private gasLimit;
+    mapping(uint256 /* GIF request ID */ => bytes /* Chainlink response */) public responses;
+    mapping(uint256 /* idx */ => uint256 /* GIF request ID */) public responsesIdx;
 
-    //TODO: remove after testing
+    /* Chainlink Automation */
+    uint256 public updateInterval;
+    uint256 public lastUpkeepTimeStamp;
+
+    /* Chainlink Functions */
     bytes32 public latestRequestId;
     bytes public latestResponse;
     bytes public latestError;
+    uint256 public latestTimestamp;
+    uint256 public responseCounter;
+
+    uint64 private subscriptionId;
+    uint32 private fulfillGasLimit;
 
     event LogRainRequest(uint256 requestId, bytes32 chainlinkRequestId);
     
     event LogRainFulfill(
         uint256 requestId, 
         bytes32 chainlinkRequestId, 
+        bytes response
+    );
+
+    event LogRainRespond(
+        uint256 requestId, 
         uint256 prec,
         uint256 precDays
     );
@@ -36,15 +53,19 @@ contract RainOracleCLFunctions is
     constructor(
         bytes32 _name,
         address _registry,
-        address _chainLinkOperator,
+        address _oracle,
         uint64 _subscriptionId,
-        uint32 _gasLimit
+        uint32 _fulfillGasLimit,
+        uint256 _updateInterval
     )
         Oracle(_name, _registry)
-        FunctionsClient(_chainLinkOperator)
+        FunctionsClient(_oracle)
     {
         subscriptionId = _subscriptionId;
-        gasLimit = _gasLimit;
+        fulfillGasLimit = _fulfillGasLimit;
+        updateInterval = _updateInterval;
+        lastUpkeepTimeStamp = block.timestamp;
+        latestTimestamp = block.timestamp;
     }
 
     function request(uint256 gifRequestId, bytes calldata input)
@@ -73,11 +94,13 @@ contract RainOracleCLFunctions is
         string[] memory args = prepareArgs(startDate, endDate, lat, lng, coordMultiplier, precMultiplier);
         req.addArgs(args);
 
-        bytes32 chainlinkRequestId = sendRequest(req, subscriptionId, gasLimit);
+        bytes32 chainlinkRequestId = sendRequest(req, subscriptionId, fulfillGasLimit);
 
         latestRequestId = chainlinkRequestId;
+        latestTimestamp = block.timestamp;
 
         gifRequests[chainlinkRequestId] = gifRequestId;
+
         emit LogRainRequest(gifRequestId, chainlinkRequestId);
     }
 
@@ -110,18 +133,61 @@ contract RainOracleCLFunctions is
         emit OCRResponse(chainlinkRequestId, response, err);
 
         if (err.length == 0) {
-            (uint256 prec, uint256 precDays) = abi.decode(response, (uint256, uint256));
-
+            responseCounter = responseCounter + 1;
             uint256 gifRequest = gifRequests[chainlinkRequestId];
-            bytes memory data =  abi.encode(prec, precDays);
-            _respond(gifRequest, data);
+            responses[gifRequest] = response;
+            responsesIdx[responseCounter] = gifRequest;
 
             delete gifRequests[chainlinkRequestId];
-            emit LogRainFulfill(gifRequest, chainlinkRequestId, prec, precDays);
+
+            emit LogRainFulfill(gifRequest, chainlinkRequestId, response);
         }
     }
 
-  function cancel(uint256 requestId)
+    function respondPending()
+        public
+    {
+        for (uint i = 1; i <= responseCounter; i++) {
+            uint256 gifRequest = responsesIdx[i];
+            if(gifRequest == 0) {
+                continue;
+            } else {
+                respond(gifRequest);
+                delete responsesIdx[i];
+            }
+        }
+    }
+
+    function respond(uint256 gifRequest)
+        private
+    {
+        bytes memory response = responses[gifRequest];
+
+        require(response.length != 0, "Response for this request is not ready yet");
+
+        (uint256 prec, uint256 precDays) = abi.decode(response, (uint256, uint256));
+
+        _respond(gifRequest, response);
+
+        delete responses[gifRequest];
+
+        emit LogRainRespond(gifRequest, prec, precDays);
+    }
+
+    function checkUpkeep(bytes memory) public view override returns (bool upkeepNeeded, bytes memory) {
+        bool checkInterval = (block.timestamp - lastUpkeepTimeStamp) > updateInterval;
+        bool checkFullfillment = latestTimestamp > lastUpkeepTimeStamp;
+        upkeepNeeded = checkInterval || checkFullfillment;
+    }
+
+    function performUpkeep(bytes calldata) external override {
+        (bool upkeepNeeded, ) = checkUpkeep("");
+        require(upkeepNeeded, "Upkeep not needed");
+        lastUpkeepTimeStamp = block.timestamp;
+        respondPending();
+    }
+
+    function cancel(uint256 requestId)
         external override
         onlyOwner
     {
@@ -130,7 +196,7 @@ contract RainOracleCLFunctions is
     }
 
 
-// only used for testing of chainlink operator
+    // only used for testing
     function encodeRequestParameters(
         uint256 startDate, 
         uint256 endDate, 
@@ -155,7 +221,7 @@ contract RainOracleCLFunctions is
         );
     }
 
-    // only used for testing of chainlink operator
+    // only used for testing
     function encodeFulfillParameters(
         bytes32 chainlinkRequestId, 
         uint256 precActual,
@@ -175,7 +241,7 @@ contract RainOracleCLFunctions is
     }
 
     function updateGasLimit(uint32 _gasLimit) external onlyOwner {
-        gasLimit = _gasLimit;
+        fulfillGasLimit = _gasLimit;
     }
 
     /**
@@ -196,7 +262,7 @@ contract RainOracleCLFunctions is
     }
 
     function getCLFunctionsGasLimit() external view returns(uint32 clFunctionsgasLimit) {
-        return gasLimit;
+        return fulfillGasLimit;
     }
 
     function getCLFunctionsSubscriptionId() external view returns(uint64 clFunctionsSubscriptionId) {
