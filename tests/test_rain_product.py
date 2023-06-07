@@ -111,7 +111,8 @@ def test_happy_path(
     triggerFloat = 0.1 # %
     exitFloat = 1.0 # %
     aphFloat = [5.0, 2.0] # mm
-
+    precDays = [1, 2]
+    
     multiplier = product.getPercentageMultiplier()
     coordMultiplier = product.getCoordinatesMultiplier()
     precMultiplier = product.getPrecipitationMultiplier()
@@ -123,8 +124,8 @@ def test_happy_path(
     precHist = [precMultiplier * aphFloat[0], precMultiplier * aphFloat[1]]
 
     tx = [None, None]
-    tx[0] = product.createRisk(startDate, endDate, placeId[0], lat[0], long[0], trigger, exit, precHist[0], {'from': insurer})
-    tx[1] = product.createRisk(startDate, endDate, placeId[1], lat[1], long[1], trigger, exit, precHist[1], {'from': insurer})
+    tx[0] = product.createRisk(startDate, endDate, placeId[0], lat[0], long[0], trigger, exit, precHist[0], precDays[0], {'from': insurer})
+    tx[1] = product.createRisk(startDate, endDate, placeId[1], lat[1], long[1], trigger, exit, precHist[1], precDays[1], {'from': insurer})
 
     riskId = [None, None]
     riskId = [tx[0].return_value, tx[1].return_value]
@@ -302,6 +303,7 @@ def test_happy_path(
     # create precActual data for oracle response
     # precActual value selected triggers a payout
     precActual = precHist[0] + precMultiplier
+    precActualDays = precDays[0] + 1
 
     data = [None, None]
     data[0] = oracle.encodeFulfillParameters(
@@ -309,7 +311,9 @@ def test_happy_path(
         placeId[0],
         startDate, 
         endDate, 
-        precActual
+        precActual,
+        #precActualDays
+
     )
 
     # simulate callback from oracle node with call to chainlink operator contract
@@ -330,7 +334,8 @@ def test_happy_path(
         placeId[1], 
         startDate, 
         endDate,
-        precHist[1] # setting precActual to precHist will result in a 0 payout
+        precHist[1], # setting precActual to precHist will result in a 0 payout
+        #precActualDays
     )
 
     # simulate callback from oracle node with call to chainlink operator contract
@@ -398,7 +403,9 @@ def test_happy_path(
         risk['trigger'],
         risk['exit'],
         risk['precHist'],
+        risk['precDays'],
         risk['precActual'],
+        risk['precDaysActual'],
     )
 
     print('multiplier {}'.format(multiplier))
@@ -616,36 +623,40 @@ def test_payout_percentage_calculation(gifProduct: GifProduct):
     exit = 1.0
 
     # random example values
-    assert get_payout_delta(0.4, 4.20, 5.88, trigger, exit, product, multiplier, precMultiplier) < 0.0000001
+    assert get_payout_delta(0.4, 4.20, 2, 5.88, 2, trigger, exit, product, multiplier, precMultiplier) < 0.0000001
+
+    assert get_payout_delta(0, 4.20, 2, 5.88, 1, trigger, exit, product, multiplier, precMultiplier) < 0.0000001
 
     # expectedPayoutPercentage, precHist, precActual, trigger, exit, product, multiplier
 
     trigger = 0.05
     exit = 1.0
     precHist = 5.0
+    precDays = 1
+    precDaysActual = 2
 
     # run through product example table
-    assert get_payout_delta(0, precHist, 0, trigger, exit, product, multiplier, precMultiplier) < 0.0000001
-    assert get_payout_delta(0, precHist, 1, trigger, exit, product, multiplier, precMultiplier) < 0.0000001
-    assert get_payout_delta(0, precHist, 2, trigger, exit, product, multiplier, precMultiplier) < 0.0000001
-    assert get_payout_delta(0, precHist, 3, trigger, exit, product, multiplier, precMultiplier) < 0.0000001
-    assert get_payout_delta(0, precHist, 4, trigger, exit, product, multiplier, precMultiplier) < 0.0000001
-    assert get_payout_delta(0, precHist, 5, trigger, exit, product, multiplier, precMultiplier) < 0.0000001
-    assert get_payout_delta(0.2, precHist, 6, trigger, exit, product, multiplier, precMultiplier) < 0.0000001
-    assert get_payout_delta(0.4, precHist, 7, trigger, exit, product, multiplier, precMultiplier) < 0.0000001
-    assert get_payout_delta(0.6, precHist, 8, trigger, exit, product, multiplier, precMultiplier) < 0.0000001
-    assert get_payout_delta(0.8, precHist, 9, trigger, exit, product, multiplier, precMultiplier) < 0.0000001
-    assert get_payout_delta(1, precHist, 10, trigger, exit, product, multiplier, precMultiplier) < 0.0000001
-    assert get_payout_delta(1, precHist, 11, trigger, exit, product, multiplier, precMultiplier) < 0.0000001
-    assert get_payout_delta(1, precHist, 12, trigger, exit, product, multiplier, precMultiplier) < 0.0000001
-    assert get_payout_delta(1, precHist, 13, trigger, exit, product, multiplier, precMultiplier) < 0.0000001
-    assert get_payout_delta(1, precHist, 14, trigger, exit, product, multiplier, precMultiplier) < 0.0000001
-    assert get_payout_delta(1, precHist, 15, trigger, exit, product, multiplier, precMultiplier) < 0.0000001
-    assert get_payout_delta(1, precHist, 16, trigger, exit, product, multiplier, precMultiplier) < 0.0000001
-    assert get_payout_delta(1, precHist, 17, trigger, exit, product, multiplier, precMultiplier) < 0.0000001
-    assert get_payout_delta(1, precHist, 18, trigger, exit, product, multiplier, precMultiplier) < 0.0000001
-    assert get_payout_delta(1, precHist, 19, trigger, exit, product, multiplier, precMultiplier) < 0.0000001
-    assert get_payout_delta(1, precHist, 20, trigger, exit, product, multiplier, precMultiplier) < 0.0000001
+    assert get_payout_delta(0, precHist, precDays, 0, precDaysActual, trigger, exit, product, multiplier, precMultiplier) < 0.0000001
+    assert get_payout_delta(0, precHist, precDays, 1, precDaysActual, trigger, exit, product, multiplier, precMultiplier) < 0.0000001
+    assert get_payout_delta(0, precHist, precDays, 2, precDaysActual, trigger, exit, product, multiplier, precMultiplier) < 0.0000001
+    assert get_payout_delta(0, precHist, precDays, 3, precDaysActual, trigger, exit, product, multiplier, precMultiplier) < 0.0000001
+    assert get_payout_delta(0, precHist, precDays, 4, precDaysActual, trigger, exit, product, multiplier, precMultiplier) < 0.0000001
+    assert get_payout_delta(0, precHist, precDays, 5, precDaysActual, trigger, exit, product, multiplier, precMultiplier) < 0.0000001
+    assert get_payout_delta(0.2, precHist, precDays, 6, precDaysActual, trigger, exit, product, multiplier, precMultiplier) < 0.0000001
+    assert get_payout_delta(0.4, precHist, precDays, 7, precDaysActual, trigger, exit, product, multiplier, precMultiplier) < 0.0000001
+    assert get_payout_delta(0.6, precHist, precDays, 8, precDaysActual, trigger, exit, product, multiplier, precMultiplier) < 0.0000001
+    assert get_payout_delta(0.8, precHist, precDays, 9, precDaysActual, trigger, exit, product, multiplier, precMultiplier) < 0.0000001
+    assert get_payout_delta(1, precHist, precDays, 10, precDaysActual, trigger, exit, product, multiplier, precMultiplier) < 0.0000001
+    assert get_payout_delta(1, precHist, precDays, 11, precDaysActual, trigger, exit, product, multiplier, precMultiplier) < 0.0000001
+    assert get_payout_delta(1, precHist, precDays, 12, precDaysActual, trigger, exit, product, multiplier, precMultiplier) < 0.0000001
+    assert get_payout_delta(1, precHist, precDays, 13, precDaysActual, trigger, exit, product, multiplier, precMultiplier) < 0.0000001
+    assert get_payout_delta(1, precHist, precDays, 14, precDaysActual, trigger, exit, product, multiplier, precMultiplier) < 0.0000001
+    assert get_payout_delta(1, precHist, precDays, 15, precDaysActual, trigger, exit, product, multiplier, precMultiplier) < 0.0000001
+    assert get_payout_delta(1, precHist, precDays, 16, precDaysActual, trigger, exit, product, multiplier, precMultiplier) < 0.0000001
+    assert get_payout_delta(1, precHist, precDays, 17, precDaysActual, trigger, exit, product, multiplier, precMultiplier) < 0.0000001
+    assert get_payout_delta(1, precHist, precDays, 18, precDaysActual, trigger, exit, product, multiplier, precMultiplier) < 0.0000001
+    assert get_payout_delta(1, precHist, precDays, 19, precDaysActual, trigger, exit, product, multiplier, precMultiplier) < 0.0000001
+    assert get_payout_delta(1, precHist, precDays, 20, precDaysActual, trigger, exit, product, multiplier, precMultiplier) < 0.0000001
 
 def test_payout_percentage_calculation_single(gifProduct: GifProduct):
 
@@ -656,14 +667,18 @@ def test_payout_percentage_calculation_single(gifProduct: GifProduct):
     trigger = 0.75
     exit = 2.0
     precHist = 2.1
+    precDays = 1
     precActual = 4.2
+    precDaysActual = precDays + 1
     expected_payout_percentage = 0.5 * multiplier
 
     payout_percentage = product.calculatePayoutPercentage(
         trigger * multiplier,
         exit * multiplier,
         precHist * precMultiplier,
-        precActual * precMultiplier
+        precDays,
+        precActual * precMultiplier,
+        precDaysActual
     )
     assert int(expected_payout_percentage + 0.5) == payout_percentage
 
@@ -674,7 +689,8 @@ def test_payout_percentage_calculation_single(gifProduct: GifProduct):
 
 def get_payout_delta(
     expectedPayoutPercentage,
-    precHist, precActual, 
+    precHist, precDays,
+    precActual, precDaysActual,
     trigger, exit, 
     product, multiplier,
     precMultiplier
@@ -683,7 +699,9 @@ def get_payout_delta(
         trigger * multiplier,
         exit * multiplier,
         precHist * precMultiplier,
-        precActual * precMultiplier
+        precDays,
+        precActual * precMultiplier,
+        precDaysActual
     )
     print('get_payout_delta calculatedPayout: {}'.format(calculatedPayout))
 

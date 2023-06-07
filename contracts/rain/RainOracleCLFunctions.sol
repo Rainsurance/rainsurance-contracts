@@ -152,8 +152,8 @@ contract RainOracleCLFunctions is
             if(gifRequest == 0) {
                 continue;
             } else {
-                respond(gifRequest);
                 delete responsesIdx[i];
+                respond(gifRequest);
             }
         }
     }
@@ -167,9 +167,9 @@ contract RainOracleCLFunctions is
 
         (uint256 prec, uint256 precDays) = abi.decode(response, (uint256, uint256));
 
-        _respond(gifRequest, response);
-
         delete responses[gifRequest];
+
+        _respond(gifRequest, response);
 
         emit LogRainRespond(gifRequest, prec, precDays);
     }

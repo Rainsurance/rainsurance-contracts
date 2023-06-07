@@ -120,7 +120,7 @@ contract RainOracle is
     {
         uint256 gifRequest = gifRequests[chainlinkRequestId];
         
-        bytes memory data =  abi.encode(precActual);
+        bytes memory data =  abi.encode(precActual, 1000);
         _respond(gifRequest, data);
 
         delete gifRequests[chainlinkRequestId];

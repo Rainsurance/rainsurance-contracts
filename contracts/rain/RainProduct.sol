@@ -27,7 +27,7 @@ contract RainProduct is
     uint256 public constant PRECIPITATION_MULTIPLIER = 100;
 
     uint256 public constant PRECIPITATION_MIN = 0;
-    uint256 public constant PRECIPITATION_MAX = 1000;
+    uint256 public constant PRECIPITATION_MAX = 10000;
     
     struct Risk {
         bytes32 id; // hash over placeId, start, end
@@ -111,7 +111,8 @@ contract RainProduct is
         int256 long,
         uint256 trigger,
         uint256 exit,
-        uint256 precHist
+        uint256 precHist,
+        uint256 precDays
     )
         external
         onlyRole(INSURER_ROLE)
@@ -138,6 +139,7 @@ contract RainProduct is
         risk.trigger = trigger;
         risk.exit = exit;
         risk.precHist = precHist;
+        risk.precDays = precDays;
         risk.createdAt = block.timestamp; // solhint-disable-line
         risk.updatedAt = block.timestamp; // solhint-disable-line
 
@@ -152,7 +154,8 @@ contract RainProduct is
         bytes32 riskId,
         uint256 trigger,
         uint256 exit,
-        uint256 precHist
+        uint256 precHist,
+        uint256 precDays
     )
         external
         onlyRole(INSURER_ROLE)
@@ -166,6 +169,7 @@ contract RainProduct is
         risk.trigger = trigger;
         risk.exit = exit;
         risk.precHist = precHist;
+        risk.precHist = precDays;
         risk.updatedAt = block.timestamp; // solhint-disable-line
     }
 
@@ -370,7 +374,7 @@ contract RainProduct is
         onlyOracle
     {
 
-        (uint256 precActual) = abi.decode(responseData, (uint256));
+        (uint256 precActual, uint256 precDaysActual) = abi.decode(responseData, (uint256, uint256));
 
         bytes32 riskId = _getRiskId(processId);
 
@@ -382,11 +386,14 @@ contract RainProduct is
 
         // update risk using precActual info
         risk.precActual = precActual;
+        risk.precDaysActual = precDaysActual;
         risk.payoutPercentage = calculatePayoutPercentage(
             risk.trigger,
             risk.exit,
             risk.precHist,
-            risk.precActual
+            risk.precDays,
+            risk.precActual,
+            risk.precDaysActual
         );
 
         risk.responseAt = block.timestamp; // solhint-disable-line
@@ -481,15 +488,20 @@ contract RainProduct is
     }
 
     function calculatePayoutPercentage(
-        uint256 trigger, // at and bellow this precipitation no payout is made (%)
-        uint256 exit, // at and above this precipitation the max payout is made (%)
-        uint256 precHist, // historical precipitation for placeId (mm)
-        uint256 precActual // actual precipitation for placeId in the current period (mm)
+        uint256 trigger, 
+        uint256 exit,
+        uint256 precHist,
+        uint256 precDays,
+        uint256 precActual,
+        uint256 precDaysActual
     )
         public
         pure
         returns(uint256 payoutPercentage)
     {
+        if (precDaysActual < precDays) {
+            return 0;
+        }
         if (precActual <= precHist) {
             return 0;
         }

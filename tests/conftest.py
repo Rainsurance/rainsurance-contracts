@@ -10,6 +10,7 @@ from brownie import (
     Usdc,
     RainProduct,
     RainOracle,
+    RainOracleCLFunctions,
     RainRiskpool
 )
 
@@ -57,7 +58,7 @@ PRODUCT_BASE_NAME = 'RAIN'
 
 CONTRACT_CLASS_TOKEN = Usdc
 CONTRACT_CLASS_PRODUCT = RainProduct
-CONTRACT_CLASS_ORACLE = RainOracle
+CONTRACT_CLASS_ORACLE = RainOracle # RainOracle | RainOracleCLFunctions
 CONTRACT_CLASS_RISKPOOL = RainRiskpool
 
 INITIAL_ACCOUNT_FUNDING = '1 ether'

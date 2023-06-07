@@ -43,6 +43,7 @@ LONG_FLOAT = -46.634370
 TRIGGER = 0.1
 EXIT = 1.0
 PRECIP_HIST = 5.0
+PRECIP_HIST_DAYS = 2
 
 # default setup for all_in_1 -> create_bundle
 BUNDLE_FUNDING = 10 ** 6
@@ -80,11 +81,17 @@ def help_testnet():
 
 
 def help_testnet_clfunctions():
-    print('======== deploy instructions for mumbai testnet + chainlink functions oracle ========')
+    print('======== deploy instructions for mumbai testnet + chainlink functions oracle & automation ========')
     print('* Attention: in order for the following instructions to work you must have loaded the brownie console with the parameter --network=mumbai or --network=polygon-test')
     print('* You can add the mumbai network by running: brownie networks add Ethereum Mumbai host=QUICKNODE_RPC_URL chainid=80001 explorer=https://api-testnet.polygonscan.com/api')
-    print('* First you need to deploy the CL Functions-based Oracle/Client using the project https://github.com/Rainsurance/functions-hardhat-starter-kit by running the task `functions-deploy-rainsurance`')
-    print('* Then you should add the address of this Oracle/Client in the `git_instance_adress.txt` file as `oracle`')
+    print('* These instructions assume that you have already deployed a full GIF instance before')
+    print('* First of all make sure you have the ORACLE_PROVIDER address whitelisted to use the Chainlink Functions beta')
+    print('* Clone the following Hardhat project https://github.com/Rainsurance/functions-hardhat-starter-kit and follow its setup inscructions')
+    print('* You need to deploy the Chainlink Functions-based Oracle/Client contract by running the task `functions-deploy-rainsurance` (use the ORACLE_PROVIDER account for that)')
+    print('* Second you must create a new Chainlink Functions subscription and add that contract as consumer by running the task `functions-sub-create`')
+    print('* Then you must register a new Chainlink Upkeep by visiting this website: https://automation.chain.link/mumbai/new (choose Custom Logic / enter the contract address / 700000 as gas limit / fund the contract with LINK)')
+    print('* Finally you must add the address of the contract in the `git_instance_adress.txt` file in this projects root directory as `oracle`')
+    print('* Now you are all set on the Oracle side! You can run the following instructions inside the brownie console to deploy the GIF Product and RiskPool:')
     print('from scripts.deploy_rain import all_in_1, verify_deploy')
     print('from scripts.deploy_product import stakeholders_accounts')
     print("(customer, customer2, product, oracle, riskpool, riskpoolWallet, investor, usdc, instance, instanceService, instanceOperator, bundleId, riskId, processId, d) = all_in_1(stakeholders_accounts=stakeholders_accounts(), deploy_all=False, publish_source=True, chainLinkOracleAddress='0xeA6721aC65BCeD841B8ec3fc5fEdeA6141a0aDE4')")
@@ -130,12 +137,13 @@ def create_risk(
     long = LONG_FLOAT,
     trigger = TRIGGER,
     exit = EXIT,
-    precHist = PRECIP_HIST
+    precHist = PRECIP_HIST,
+    precDays = PRECIP_HIST_DAYS
 ):    
     multiplier = product.getPercentageMultiplier()
     coordMultiplier = product.getCoordinatesMultiplier()
     precMultiplier = product.getPrecipitationMultiplier()
-    tx = product.createRisk(startDate, endDate, placeId, coordMultiplier * lat, coordMultiplier * long, multiplier * trigger, multiplier * exit, precHist * precMultiplier, {'from': insurer})
+    tx = product.createRisk(startDate, endDate, placeId, coordMultiplier * lat, coordMultiplier * long, multiplier * trigger, multiplier * exit, precHist * precMultiplier, precDays, {'from': insurer})
     return tx.events['LogRainRiskDataCreated']['riskId']
 
 def create_policy(

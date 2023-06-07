@@ -65,7 +65,8 @@ def test_trigger_and_cancel_oracle_requests(
     triggerFloat = 0.1 # %
     exitFloat = 1.0 # %
     aphFloat = 3.0 # mm
-    
+    precDays = 2
+
     multiplier = product.getPercentageMultiplier()
     coordMultiplier = product.getCoordinatesMultiplier()
     precMultiplier = product.getPrecipitationMultiplier()
@@ -75,8 +76,8 @@ def test_trigger_and_cancel_oracle_requests(
     lat = coordMultiplier * latFloat
     long = coordMultiplier * longFloat
     precHist = precMultiplier * aphFloat
-    
-    tx = product.createRisk(startDate, endDate, placeId, lat, long, trigger, exit, precHist, {'from': insurer})
+
+    tx = product.createRisk(startDate, endDate, placeId, lat, long, trigger, exit, precHist, precDays, {'from': insurer})
     riskId = tx.return_value
 
     customerFunding = 500
@@ -216,7 +217,8 @@ def test_oracle_responds_with_invalid_aaay(
     triggerFloat = 0.1 # %
     exitFloat = 1.0 # %
     aphFloat = 3.0 # mm
-    
+    precDays = 2
+
     multiplier = product.getPercentageMultiplier()
     coordMultiplier = product.getCoordinatesMultiplier()
     precMultiplier = product.getPrecipitationMultiplier()
@@ -227,7 +229,7 @@ def test_oracle_responds_with_invalid_aaay(
     long = coordMultiplier * longFloat
     precHist = precMultiplier * aphFloat
     
-    tx = product.createRisk(startDate, endDate, placeId, lat, long, trigger, exit, precHist, {'from': insurer})
+    tx = product.createRisk(startDate, endDate, placeId, lat, long, trigger, exit, precHist, precDays, {'from': insurer})
     riskId = tx.return_value
 
     customerFunding = 500
