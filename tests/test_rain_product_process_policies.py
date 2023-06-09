@@ -107,6 +107,7 @@ def test_process_policies_for_risk(
     triggerFloat = 0.1 # %
     exitFloat = 1.0 # %
     aphFloat = [5.0, 2.0] # mm
+    precDays = [1, 2]
 
     multiplier = product.getPercentageMultiplier()
     coordMultiplier = product.getCoordinatesMultiplier()
@@ -119,7 +120,7 @@ def test_process_policies_for_risk(
     precHist = [precMultiplier * aphFloat[0], precMultiplier * aphFloat[1]]
 
     tx = [None, None, None, None, None]
-    tx[0] = product.createRisk(startDate, endDate, placeId[0], lat[0], long[0], trigger, exit, precHist[0], {'from': insurer})
+    tx[0] = product.createRisk(startDate, endDate, placeId[0], lat[0], long[0], trigger, exit, precHist[0], precDays[0], {'from': insurer})
 
     riskId = [None, None, None, None, None]
     riskId = [tx[0].return_value]
@@ -156,7 +157,7 @@ def test_process_policies_for_risk(
 
     print('--- step trigger oracle (call chainlin node) -------------')
 
-    tx[0] = product.triggerOracle(policyId[0], {'from': insurer})
+    tx[0] = product.triggerOracle(policyId[0], "", "", {'from': insurer})
     requestId = [tx[0].return_value] 
 
     # ensure event emitted as chainlink client
@@ -323,6 +324,7 @@ def test_process_policies_mix_batch_individual_processing(
     triggerFloat = 0.1 # %
     exitFloat = 1.0 # %
     aphFloat = [5.0, 2.0] # mm
+    precDays = [1, 2]
 
     multiplier = product.getPercentageMultiplier()
     coordMultiplier = product.getCoordinatesMultiplier()
@@ -335,7 +337,7 @@ def test_process_policies_mix_batch_individual_processing(
     precHist = [precMultiplier * aphFloat[0], precMultiplier * aphFloat[1]]
 
     tx = [None, None, None, None, None]
-    tx[0] = product.createRisk(startDate, endDate, placeId[0], lat[0], long[0], trigger, exit, precHist[0], {'from': insurer})
+    tx[0] = product.createRisk(startDate, endDate, placeId[0], lat[0], long[0], trigger, exit, precHist[0], precDays[0], {'from': insurer})
 
     riskId = [None, None, None, None, None]
     riskId = [tx[0].return_value]
@@ -370,7 +372,7 @@ def test_process_policies_mix_batch_individual_processing(
 
     print('--- step trigger oracle (call chainlin node) -------------')
 
-    tx[0] = product.triggerOracle(policyId[0], {'from': insurer})
+    tx[0] = product.triggerOracle(policyId[0], "", "", {'from': insurer})
     requestId = [tx[0].return_value] 
 
     # check event attributes

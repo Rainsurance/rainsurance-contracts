@@ -10,7 +10,11 @@ from brownie import (
     Usdc,
 )
 
-from scripts.product import GifProductComplete
+from scripts.product import (
+    GifProductComplete,
+    GifOracle
+)
+
 from scripts.instance import GifInstance
 
 from scripts.util import (
@@ -376,6 +380,41 @@ def _add_product_to_deployment(
 
     return deployment
 
+def register_oracle_with_gif_instance(oracleAddress: Account, oracleClass):
+
+    oracle = contract_from_address(oracleClass, oracleAddress)
+
+    a = stakeholders_accounts()
+    oracleProvider = a[ORACLE_PROVIDER]
+
+    instance = GifInstance(
+        instanceOperator=a[INSTANCE_OPERATOR],
+        instanceWallet=a[INSTANCE_WALLET],
+        registryAddress=get_address('registry'))
+    
+    instanceService = instance.getInstanceService()
+    instanceOperatorService = instance.getInstanceOperatorService()
+    componentOwnerService = instance.getComponentOwnerService()
+    
+    providerRole = instanceService.getOracleProviderRole()
+    print('grant oracle provider role {} to oracle provider {}'.format(
+        providerRole, oracleProvider))
+    instanceOperatorService.grantRole(
+        providerRole, 
+        oracleProvider, 
+        {'from': instance.getOwner()})
+
+    print('oracle {} proposing to instance by oracle provider {}'.format(
+        oracle, oracleProvider))
+    componentOwnerService.propose(
+        oracle,
+        {'from': oracleProvider})
+
+    print('approval of oracle id {} by instance operator {}'.format(
+        oracle.getId(), instance.getOwner()))
+    instanceOperatorService.approve(
+        oracle.getId(),
+        {'from': instance.getOwner()})
 
 def all_in_1_base(
     base_name,
@@ -391,10 +430,9 @@ def all_in_1_base(
     token_address=None,
     deploy_all=False,
     publish_source=False,
-    chainLinkTokenAddress=None,
     chainLinkOracleAddress=None,
     chainLinkJobId=None,
-    chainLinkPaymentAmount=None
+    chainLinkPaymentAmount=None,
 ):
     a = stakeholders_accounts or stakeholders_accounts_ganache()
 
@@ -455,6 +493,9 @@ def all_in_1_base(
     investor = a[INVESTOR]
     customer = a[CUSTOMER1]
     insurer = a[INSURER]
+
+    oracleAddress = get_address('oracle')
+    chainLinkTokenAddress = get_address('link_token')
     
     print('====== deploy product/oracle/riskpool "{}" ======'.format(base_name))
     gifDeployment = GifProductComplete(
@@ -474,8 +515,10 @@ def all_in_1_base(
         chainLinkOracleAddress=chainLinkOracleAddress,
         chainLinkJobId=chainLinkJobId,
         chainLinkPaymentAmount=chainLinkPaymentAmount,
+        oracleAddress=oracleAddress,
         name=base_name,
-        publish_source=publish_source)
+        publish_source=publish_source,
+        )
 
     # assess balances at beginning of deploy
     balances_after_deploy = _get_balances(a)

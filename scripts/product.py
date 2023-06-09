@@ -7,7 +7,8 @@ from brownie import (
     Wei,
     Contract, 
     ChainlinkOperator, 
-    ChainlinkToken, 
+    ChainlinkToken,
+    FunctionsOracle
 )
 from scripts.util import (
     s2b,
@@ -45,7 +46,8 @@ class GifOracle(object):
         chainLinkTokenAddress=None,
         chainLinkOracleAddress=None,
         chainLinkJobId=None,
-        chainLinkPaymentAmount=None
+        chainLinkPaymentAmount=None,
+        oracleAddress=None
     ):
         instanceService = instance.getInstanceService()
         instanceOperatorService = instance.getInstanceOperatorService()
@@ -74,10 +76,11 @@ class GifOracle(object):
                 publish_source=publish_source)
             chainLinkTokenAddress = self.chainlinkToken.address
         else:
-            print('2) found chainlink token with address {}'.format(
+            print('2) reusing chainlink token with address {}'.format(
             chainLinkTokenAddress))
         
-        if chainLinkOracleAddress is None:
+        # AnyAPI Oracle/Operator (new)
+        if oracleAddress is None and chainLinkOracleAddress is None:
             print('3) deploy chainlink (mock) operator by oracle provider {}'.format(
                 oracleProvider))
             self.chainlinkOperator = ChainlinkOperator.deploy(
@@ -89,45 +92,68 @@ class GifOracle(object):
                 chainlinkNodeOperator, oracleProvider))
             self.chainlinkOperator.setAuthorizedSenders([chainlinkNodeOperator])
 
-        else:
-            print('3) found chainlink operator with address {}'.format(
+        # AnyAPI Oracle/Operator (reuse)
+        elif oracleAddress is None:
+            
+            print('3) reusing operator with address {}'.format(
                 chainLinkOracleAddress))
             self.chainlinkOperator = contract_from_address(
                 ChainlinkOperator, 
                 chainLinkOracleAddress)
+            
+        # Functions Oracle/Operator (reuse)
+        else:
+            print('3) reusing chainlink functions operator with address {}'.format(
+                oracleAddress))
+            self.chainlinkOperator = contract_from_address(
+                FunctionsOracle, 
+                chainLinkOracleAddress)
+            
 
         if chainLinkJobId is None:
             chainLinkJobId = '1'
 
         if chainLinkPaymentAmount is None:
             chainLinkPaymentAmount = 0
-        
-        print('5) deploy oracle by oracle provider {}'.format(
-            oracleProvider))
-        
-        self.oracle = oracleContractClass.deploy(
-            s2b32(name),
-            instance.getRegistry(),
-            chainLinkTokenAddress,
-            chainLinkOracleAddress,
-            s2b32(chainLinkJobId),
-            chainLinkPaymentAmount,
-            {'from': oracleProvider},
-            publish_source=publish_source)
-        
-        print('6) oracle {} proposing to instance by oracle provider {}'.format(
-            self.oracle, oracleProvider))
 
-        componentOwnerService.propose(
-            self.oracle,
-            {'from': oracleProvider})
+        # AnyAPI Consumer/Client (new)
+        if oracleAddress is None:
+            print('5) deploy oracle by oracle provider {}'.format(
+                oracleProvider))
+            
+            self.oracle = oracleContractClass.deploy(
+                s2b32(name),
+                instance.getRegistry(),
+                chainLinkTokenAddress,
+                chainLinkOracleAddress,
+                s2b32(chainLinkJobId),
+                chainLinkPaymentAmount,
+                {'from': oracleProvider},
+                publish_source=publish_source)
+        
+        # Functions Consumer/Client (reuse)
+        else:
+            print('5) reusing chainlink functions oracle with address {} and class {}'.format(
+            oracleAddress, oracleContractClass._name))
+            self.oracle = contract_from_address(oracleContractClass, oracleAddress)
+        
+        try:
+            print('6) oracle {} proposing to instance by oracle provider {}'.format(
+                self.oracle, oracleProvider))
 
-        print('7) approval of oracle id {} by instance operator {}'.format(
-            self.oracle.getId(), instance.getOwner()))
+            componentOwnerService.propose(
+                self.oracle,
+                {'from': oracleProvider})
 
-        instanceOperatorService.approve(
-            self.oracle.getId(),
-            {'from': instance.getOwner()})
+            print('7) approval of oracle id {} by instance operator {}'.format(
+                self.oracle.getId(), instance.getOwner()))
+
+            instanceOperatorService.approve(
+                self.oracle.getId(),
+                {'from': instance.getOwner()})
+            
+        except Exception as err:
+            print(f"Unexpected {err=}")
     
     def getId(self) -> int:
         return self.oracle.getId()
@@ -368,7 +394,8 @@ class GifProductComplete(object):
         chainLinkOracleAddress=None,
         chainLinkJobId=None,
         chainLinkPaymentAmount=None,
-        name=NAME_DEFAULT,  
+        oracleAddress=None,
+        name=NAME_DEFAULT,
         publish_source=False,
     ):
         instanceService = instance.getInstanceService()
@@ -380,17 +407,18 @@ class GifProductComplete(object):
         baseName = '{}_{}'.format(name, str(int(time.time()))) # FIXME
 
         self.oracle = GifOracle(
-            instance,
-            oracleContractClass,
-            oracleProvider, 
-            # TODO analyze how to set a separate chainlink operator node account
-            chainlinkNodeOperator,
-            '{}_Oracle'.format(baseName),
-            publish_source,
-            chainLinkTokenAddress,
-            chainLinkOracleAddress,
-            chainLinkJobId,
-            chainLinkPaymentAmount)
+                instance,
+                oracleContractClass,
+                oracleProvider, 
+                # TODO analyze how to set a separate chainlink operator node account
+                chainlinkNodeOperator,
+                '{}_Oracle'.format(baseName),
+                publish_source,
+                chainLinkTokenAddress,
+                chainLinkOracleAddress,
+                chainLinkJobId,
+                chainLinkPaymentAmount,
+                oracleAddress)
 
         self.riskpool = GifRiskpool(
             instance, 

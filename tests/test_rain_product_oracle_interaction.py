@@ -65,7 +65,8 @@ def test_trigger_and_cancel_oracle_requests(
     triggerFloat = 0.1 # %
     exitFloat = 1.0 # %
     aphFloat = 3.0 # mm
-    
+    precDays = 2
+
     multiplier = product.getPercentageMultiplier()
     coordMultiplier = product.getCoordinatesMultiplier()
     precMultiplier = product.getPrecipitationMultiplier()
@@ -75,8 +76,8 @@ def test_trigger_and_cancel_oracle_requests(
     lat = coordMultiplier * latFloat
     long = coordMultiplier * longFloat
     precHist = precMultiplier * aphFloat
-    
-    tx = product.createRisk(startDate, endDate, placeId, lat, long, trigger, exit, precHist, {'from': insurer})
+
+    tx = product.createRisk(startDate, endDate, placeId, lat, long, trigger, exit, precHist, precDays, {'from': insurer})
     riskId = tx.return_value
 
     customerFunding = 500
@@ -89,7 +90,7 @@ def test_trigger_and_cancel_oracle_requests(
 
     print('--- step trigger oracle (call chainlin node) -------------')
 
-    tx = product.triggerOracle(processId, {'from': insurer})
+    tx = product.triggerOracle(processId, "", "", {'from': insurer})
     requestId = tx.return_value
     clRequestEvent = tx.events['OracleRequest'][0]
 
@@ -132,7 +133,7 @@ def test_trigger_and_cancel_oracle_requests(
     print('--- oracle node triggering for 2nd time ----------------------------')
 
     # check if processId (risk) can now be triggered a second time
-    tx = product.triggerOracle(processId, {'from': insurer})
+    tx = product.triggerOracle(processId, "", "", {'from': insurer})
     requestId2 = tx.return_value
     clRequestEvent2 = tx.events['OracleRequest'][0]
 
@@ -174,7 +175,7 @@ def test_trigger_and_cancel_oracle_requests(
 
     # check if triggering the same risk twice works
     with brownie.reverts('ERROR:RAIN-011:ORACLE_ALREADY_RESPONDED'):
-        product.triggerOracle(processId, {'from': insurer})
+        product.triggerOracle(processId, "", "", {'from': insurer})
 
 
 
@@ -216,7 +217,8 @@ def test_oracle_responds_with_invalid_aaay(
     triggerFloat = 0.1 # %
     exitFloat = 1.0 # %
     aphFloat = 3.0 # mm
-    
+    precDays = 2
+
     multiplier = product.getPercentageMultiplier()
     coordMultiplier = product.getCoordinatesMultiplier()
     precMultiplier = product.getPrecipitationMultiplier()
@@ -227,7 +229,7 @@ def test_oracle_responds_with_invalid_aaay(
     long = coordMultiplier * longFloat
     precHist = precMultiplier * aphFloat
     
-    tx = product.createRisk(startDate, endDate, placeId, lat, long, trigger, exit, precHist, {'from': insurer})
+    tx = product.createRisk(startDate, endDate, placeId, lat, long, trigger, exit, precHist, precDays, {'from': insurer})
     riskId = tx.return_value
 
     customerFunding = 500
@@ -246,7 +248,7 @@ def test_oracle_responds_with_invalid_aaay(
     assert risk['requestId'] == 0
     assert risk['responseAt'] == 0
 
-    tx = product.triggerOracle(processId, {'from': insurer})
+    tx = product.triggerOracle(processId, "", "", {'from': insurer})
     requestId = tx.return_value
     clRequestEvent = tx.events['OracleRequest'][0]
 
@@ -292,7 +294,7 @@ def test_oracle_responds_with_invalid_aaay(
 
     print('--- repeat trigger/response with valid aaaay ----------------------------')
 
-    tx = product.triggerOracle(processId, {'from': insurer})
+    tx = product.triggerOracle(processId, "", "", {'from': insurer})
     requestId = tx.return_value
     clRequestEvent = tx.events['OracleRequest'][0]
 
@@ -338,7 +340,7 @@ def test_oracle_responds_with_invalid_aaay(
     print('--- attempt to repeat trigger once more ----------------------------')
 
     with brownie.reverts('ERROR:RAIN-011:ORACLE_ALREADY_RESPONDED'):
-        product.triggerOracle(processId, {'from': insurer})
+        product.triggerOracle(processId, "", "", {'from': insurer})
 
 
 def test_oracle_getters(gifProduct: GifProduct):

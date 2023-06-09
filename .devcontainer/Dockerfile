@@ -53,6 +53,11 @@ RUN wget -O /tmp/v${VERSION_OPEN_ZEPPELIN}.tar.gz https://github.com/OpenZeppeli
     && cd /home/vscode/.brownie/packages/OpenZeppelin \
     && tar xvfz /tmp/v${VERSION_OPEN_ZEPPELIN}.tar.gz \
     && mv openzeppelin-contracts-${VERSION_OPEN_ZEPPELIN} openzeppelin-contracts@${VERSION_OPEN_ZEPPELIN} 
+RUN wget -O /tmp/v${VERSION_OPEN_ZEPPELIN}-upgradeable.tar.gz https://github.com/OpenZeppelin/openzeppelin-contracts-upgradeable/archive/refs/tags/v${VERSION_OPEN_ZEPPELIN}.tar.gz \
+    && cd /home/vscode/.brownie/packages/OpenZeppelin \
+    && tar xvfz /tmp/v${VERSION_OPEN_ZEPPELIN}-upgradeable.tar.gz \
+    && mv openzeppelin-contracts-upgradeable-${VERSION_OPEN_ZEPPELIN} openzeppelin-contracts-upgradeable@${VERSION_OPEN_ZEPPELIN} 
+
 ARG VERSION_CHAINLINK=1.6.0
 RUN wget -O /tmp/v${VERSION_CHAINLINK}.tar.gz https://github.com/smartcontractkit/chainlink/archive/refs/tags/v${VERSION_CHAINLINK}.tar.gz \
     && mkdir -p /home/vscode/.brownie/packages/smartcontractkit \

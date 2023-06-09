@@ -249,6 +249,7 @@ def create_risk(
     triggerFloat = 0.1 # %
     exitFloat = 1.0 # %
     aphFloat = 3.0 # mm
+    precDays = 2
     
     multiplier = product.getPercentageMultiplier()
     coordMultiplier = product.getCoordinatesMultiplier()
@@ -260,7 +261,7 @@ def create_risk(
     long = coordMultiplier * longFloat
     precHist = precMultiplier * aphFloat
 
-    tx = product.createRisk(startDate, endDate, placeId, lat, long, trigger, exit, precHist, {'from': insurer})
+    tx = product.createRisk(startDate, endDate, placeId, lat, long, trigger, exit, precHist, precDays,{'from': insurer})
 
     # return riskId
     return tx.return_value

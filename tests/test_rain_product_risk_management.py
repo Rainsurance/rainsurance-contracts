@@ -164,8 +164,9 @@ def test_risk_adjustment_happy_case(
     trigger_new = 0.2 * multiplier
     exit_new = 0.75 * multiplier
     aph_new = 2.0 * precMultiplier
+    days_new = 1
 
-    tx = product.adjustRisk(riskId, trigger_new, exit_new, aph_new, {'from': insurer})
+    tx = product.adjustRisk(riskId, trigger_new, exit_new, aph_new, days_new, {'from': insurer})
     print(tx.info())
 
     risk = product.getRisk(riskId)
@@ -178,6 +179,7 @@ def test_risk_adjustment_happy_case(
     assert risk[6] == trigger_new
     assert risk[7] == exit_new
     assert risk[8] == aph_new
+    assert risk[9] == days_new
 
 def test_risk_adjustment_with_policy(
     instance: GifInstance, 
@@ -235,12 +237,13 @@ def test_risk_adjustment_with_policy(
     trigger_new = 0.2 * multiplier
     exit_new = 0.75 * multiplier
     aph_new = 3.0 * precMultiplier
+    days_new = 1
 
     with brownie.reverts('ERROR:RAIN-003:RISK_WITH_POLICIES_NOT_ADJUSTABLE'):
-        product.adjustRisk(riskId, trigger_new, exit_new, aph_new, {'from': insurer})
+        product.adjustRisk(riskId, trigger_new, exit_new, aph_new, days_new, {'from': insurer})
 
 
-def create_risk(product, insurer, startDate, endDate, placeId, lat, long, trigger, exit, precHist):
+def create_risk(product, insurer, startDate, endDate, placeId, lat, long, trigger, exit, precHist, precDays = 2):
     multiplier = product.getPercentageMultiplier()
     coordMultiplier = product.getCoordinatesMultiplier()
     precMultiplier = product.getPrecipitationMultiplier()
@@ -253,6 +256,7 @@ def create_risk(product, insurer, startDate, endDate, placeId, lat, long, trigge
         trigger * multiplier,
         exit * multiplier,
         precHist * precMultiplier,
+        precDays,
         {'from': insurer }
     )
 
