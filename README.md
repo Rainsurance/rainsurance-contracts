@@ -68,7 +68,7 @@ Polygon Oficial faucet may be used: [https://faucet.polygon.technology/](https:/
 
 Create a `gif_instance_address.txt` file in the root directory with the link_token address for the Polygon Mumbai testnet.
 
-All  Chainlink contract's addresses can be found [here](https://docs.chain.link/resources/link-token-contracts?parent=chainlinkFunctions).
+All  Chainlink contracts addresses can be found [here](https://docs.chain.link/resources/link-token-contracts?parent=chainlinkFunctions).
 
 ```bash
 link_token=0x326C977E6efc84E512bB9C30f76E30c160eD06FB
