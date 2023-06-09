@@ -2,30 +2,18 @@
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![](https://dcbadge.vercel.app/api/server/cVsgakVG4R?style=flat)](https://discord.gg/Qb6ZjgE8)
 
-# GIF Core Contracts
+# GIF - Rainsurance Contracts
 
-This repository holds the GIF core contracts and tools to develop, test and deploy GIF instances.
+This repository holds the smart contracts, helper scripts and documentation for the Rain insurance product.
 
-## Repository settings
+Unit tests were based on the [GIF Core Contracts](https://github.com/etherisc/gif-contracts) sample product.
 
-The repository uses [Gitflow](https://www.atlassian.com/git/tutorials/comparing-workflows/gitflow-workflow) .
-New features/fixes are to be based on the `develop` branch. 
-Releases are to be created from the `main` or a `release/` branch. 
-Hotfixes on releases are to based on the affected `release/` or the `main` branch. 
-
-Github Actions will automatically publish npm packages (with tag `next`) to npm.js containing the latest contracts. 
-The only exception is the `main` branch, which requires manual releases using `npm publish` (without any tags). 
-
-## Clone Repository
-
-```bash
-git clone https://github.com/etherisc/gif-contracts.git
-cd gif-contracts
-```
+The rest of this project is essentially a clone from the [GIF Sandbox](https://github.com/etherisc/gif-sandbox).
 
 ## Fully configure IDE 
 
-To use our fully configured IDE see the instructions at [https://github.com/etherisc/gif-sandbox/blob/master/docs/development_environment.md](https://github.com/etherisc/gif-sandbox/blob/master/docs/development_environment.md). 
+To use GIF's configured IDE see the instructions at [https://github.com/etherisc/gif-sandbox/blob/master/docs/development_environment.md](https://github.com/etherisc/gif-sandbox/blob/master/docs/development_environment.md). 
+
 In this case you can skip the next two steps as the _devcontainer_ is based on the (updated) _brownie_ image. 
 
 ## Create Brownie Docker Image
@@ -43,7 +31,7 @@ For building the `brownie` docker image used in the samples below, follow the in
 docker run -it --rm -v $PWD:/projects brownie
 ```
 
-## Compile the GIF Core Contracts
+## Compile
 
 Inside the Brownie container compile the contracts/interfaces
 
@@ -51,7 +39,7 @@ Inside the Brownie container compile the contracts/interfaces
 brownie compile --all
 ```
 
-## Run GIF Unit Tests
+## Run Unit Tests
 
 Run the unit tests
 ```bash
@@ -67,173 +55,74 @@ brownie test -n auto
 _Note_: Should the tests fail when running them in parallel, the test execution probably creates too much load on the system. 
 In this case replace the `auto` keyword in the command with the number of executors (use at most the number of CPU cores available on your system). 
 
-## Deployment to Live Networks
+## Deployment to Polygon Mumbai Testnet
 
-Deployments to live networks can be done with brownie console as well.
+### Environment variables
+Create a `.env` file based on the `.env.example` file available in this repository.
 
-Example for the deployment to Polygon test
+All stakeholders addresses must be updated in the file and sufficiently funded.
+
+Polygon Oficial faucet may be used: [https://faucet.polygon.technology/](https://faucet.polygon.technology/)
+
+### gif_instance_address.txt file
+
+Create a `gif_instance_address.txt` file in the root directory with the link_token address for the Polygon Mumbai testnet.
+
+All  Chainlink contract's addresses can be found [here](https://docs.chain.link/resources/link-token-contracts?parent=chainlinkFunctions).
+
+```bash
+link_token=0x326C977E6efc84E512bB9C30f76E30c160eD06FB
+```
+
+### Deploy the contracts using the brownie console
+
+Next run brownie console as follow:
 
 ```bash
 brownie console --network polygon-test
-
-# in console
-owner = accounts.add()
-# will generate a new account and prints the mnemonic here
-
-owner.address
-# will print the owner address that you will need to fund first
 ```
 
-Use Polygon test [faucet](https://faucet.polygon.technology/) to fund the owner address
-```python
-from scripts.instance import GifInstance
+For a first & full deployment (including the GIF instance) run as follow.
 
-# publishes source code to the network
-instance = GifInstance(owner, publishSource=True)
+This will deploy a regular GIF Oracle that will be replaced in the next deploy by the ChainlinkFunctions-based Oracle.
 
-# after the deploy print the registry address
-instance.getRegistry().address
-```
-
-After a successful deploy check the registry contract in the Polygon [testnet explorer](https://mumbai.polygonscan.com/).
-
-To check all contract addresses you may use the instance python script inside the brownie container as follows.
 ```bash
-# 0x2852593b21796b549555d09873155B25257F6C38 is the registry contract address
-brownie run scripts/instance.py dump_sources 0x2852593b21796b549555d09873155B25257F6C38 --network polygon-test
+from scripts.deploy_rain import help_testnet
+help_testnet()
+
+# follow the instructions printed in the console with one small change:
+all_in_1(deploy_all=True ...)
 ```
 
-## Full Deployment with Example Product
+For the next deployments make sure to update the `gif_instance_address.txt` with the previously deployed contract addresses:
 
-Before attempting to deploy the setup on a life chain ensure that the
-`instanceOperator` has sufficient funds to cover the setup.
-
-For testnets faucet funds may be used
-
-* [avax-test (Fuji (C-Chain))](https://faucet.avax.network/)
-* [polygon-test](https://faucet.polygon.technology/)
-
-Using the ganache scenario shown below ensures that all addresses used are sufficiently funded.
-
-```python
-from scripts.deploy_rain import (
-    stakeholders_accounts_ganache,
-    check_funds,
-    amend_funds,
-    deploy,
-    deploy_setup_including_token,
-    from_registry,
-    from_component,
-)
-
-from scripts.instance import (
-  GifInstance, 
-  dump_sources
-)
-
-from scripts.util import (
-  s2b, 
-  b2s, 
-  contract_from_address,
-)
-
-# for ganche the command below may be used
-# for other chains, use accounts.add() and record the mnemonics
-a = stakeholders_accounts_ganache()
-
-# deploy TestCoin with instanceOperator 
-usdc = TestCoin.deploy({'from': a['instanceOperator']})
-
-# check_funds checks which stakeholder accounts need funding for the deploy
-# also, it checks if the instanceOperator has a balance that allows to provided
-# the missing funds for the other accounts
-check_funds(a, usdc)
-
-# amend_funds transfers missing funds to stakeholder addresses using the
-# avaulable balance of the instanceOperator
-amend_funds(a)
-
-d = deploy_setup_including_token(a, usdc)
-
-(
-componentOwnerService,customer1,customer2,erc20Token,instance,instanceOperator,instanceOperatorService,instanceService,
-instanceWallet,insurer,investor,oracle,oracleProvider,processId1,processId2,product,productOwner,riskId1,riskId2,
-riskpool,riskpoolKeeper,riskpoolWallet
-)=(
-d['componentOwnerService'],d['customer1'],d['customer2'],d['erc20Token'],d['instance'],d['instanceOperator'],d['instanceOperatorService'],d['instanceService'],
-d['instanceWallet'],d['insurer'],d['investor'],d['oracle'],d['oracleProvider'],d['processId1'],d['processId2'],d['product'],d['productOwner'],d['riskId1'],d['riskId2'],
-d['riskpool'],d['riskpoolKeeper'],d['riskpoolWallet']
-)
-
-# the deployed setup can now be used
-# example usage
-instanceOperator
-instance.getRegistry()
-
-instanceService.getChainName()
-instanceService.getInstanceId()
-
-product.getId()
-b2s(product.getName())
-
-customer1
-instanceService.getMetadata(processId1)
-instanceService.getApplication(processId1)
-instanceService.getPolicy(processId1)
-
-tx = product.triggerOracle(processId1, {'from': insurer})
+```bash
+registry=0x
+token=0x
+link_token=0x326C977E6efc84E512bB9C30f76E30c160eD06FB
+oracle=0x
 ```
 
-For a first time setup on a live chain the setup below can be used.
+`token` is the stable coin address
 
-IMPORTANT: Make sure to write down the generated mnemonics for the
-stakeholder accounts. To reuse the same accounts replace `accounts.add` 
-with `accounts.from_mnemonic` using the recorded mnemonics.
+`oracle` is the ChainlinkFunctions-based GIF Oracle address that is deployed separately
 
-```python
-instanceOperator=accounts.add()
-instanceWallet=accounts.add()
-oracleProvider=accounts.add()
-chainlinkNodeOperator=accounts.add()
-riskpoolKeeper=accounts.add()
-riskpoolWallet=accounts.add()
-investor=accounts.add()
-productOwner=accounts.add()
-insurer=accounts.add()
-customer1=accounts.add()
-customer2=accounts.add()
+Now run as follow:
 
-a = {
-  'instanceOperator': instanceOperator,
-  'instanceWallet': instanceWallet,
-  'oracleProvider': oracleProvider,
-  'chainlinkNodeOperator': chainlinkNodeOperator,
-  'riskpoolKeeper': riskpoolKeeper,
-  'riskpoolWallet': riskpoolWallet,
-  'investor': investor,
-  'productOwner': productOwner,
-  'insurer': insurer,
-  'customer1': customer1,
-  'customer2': customer2,
-}
+```bash
+from scripts.deploy_rain import help_testnet_clfunctions
+help_testnet_clfunctions()
+
+# follow closely all the instructions printed in the console
+
 ```
 
-To interact with an existing setup use the following helper methods as shown below.
+### To interact with an existing setup use the following helper methods as shown below.
 
 ```python
 from scripts.deploy_rain import (
     from_registry,
     from_component,
-)
-
-from scripts.instance import (
-  GifInstance, 
-)
-
-from scripts.util import (
-  s2b, 
-  b2s, 
-  contract_from_address,
 )
 
 # for the case of a known registry address, 
@@ -245,24 +134,3 @@ from scripts.util import (
 (instance, product, oracle, riskpool) = from_component('0xF039D8acecbB47763c67937D66A254DB48c87757')
 ```
 
-## Run linter
-
-Linter findings are shown automatically in vscode. To execute it manually, run the following command:
-
-```bash
-solhint contracts/**/*.sol
-```
-and including _prettier_ formatting 
-
-```bash
-solhint --config .solhint.prettier.json contracts/**/*.sol
-```
-
-## Publish release to NPMJS
-
-```bash
-npm ci 
-npm version patch/minor/major --no-git-tag-version
-npm publish
-git commit -m 'bump version'
-```
