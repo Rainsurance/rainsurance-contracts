@@ -10,7 +10,7 @@ Unit tests were based on the [GIF Core Contracts](https://github.com/etherisc/gi
 
 The rest of this project is essentially a clone from the [GIF Sandbox](https://github.com/etherisc/gif-sandbox).
 
-## Fully configure IDE 
+## Fully configured IDE 
 
 To use GIF's configured IDE see the instructions at [https://github.com/etherisc/gif-sandbox/blob/master/docs/development_environment.md](https://github.com/etherisc/gif-sandbox/blob/master/docs/development_environment.md). 
 
