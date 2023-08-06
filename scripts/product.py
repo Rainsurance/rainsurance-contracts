@@ -8,12 +8,14 @@ from brownie import (
     Contract, 
     ChainlinkOperator, 
     ChainlinkToken,
-    FunctionsOracle
+    FunctionsOracle,
+    RainRiskpool
 )
 from scripts.util import (
     s2b,
     s2b32,
-    contract_from_address
+    contract_from_address,
+    wait_for_confirmations,
 )
 
 from scripts.instance import GifInstance
@@ -31,8 +33,12 @@ PREMIUM_FEE_FRACTIONAL_DEFAULT = 0.1
 CAPITAL_FEE_FIXED_DEFAULT = 0
 CAPITAL_FEE_FRACTIONAL_DEFAULT = 0.05
 
-# riskpool risk bundle setup
-MAX_ACTIVE_RISKPOOL_BUNDLES_DEFAULT = 10
+# goal: protect balance up to 10'000'000 usdc
+# with sum insured percentage of 20% -> 2'000'000 (2 * 10**6)
+# with usdc.decimals() == 6 -> 2 * 10**(6 + 6) == 2 * 10**12
+SUM_OF_SUM_INSURED_CAP = 2 * 10**12
+
+MAX_ACTIVE_BUNDLES = 10
 
 class GifOracle(object):
 
@@ -177,64 +183,90 @@ class GifRiskpool(object):
         investor: Account,
         collateralization:int,
         publish_source,
-        maxActiveBundles=MAX_ACTIVE_RISKPOOL_BUNDLES_DEFAULT,
+        maxActiveBundles=MAX_ACTIVE_BUNDLES,
         fixedFee=CAPITAL_FEE_FIXED_DEFAULT,
-        fractionalFee=CAPITAL_FEE_FRACTIONAL_DEFAULT
+        fractionalFee=CAPITAL_FEE_FRACTIONAL_DEFAULT,
+        sumOfSumInsuredCap=SUM_OF_SUM_INSURED_CAP,
+        sumInsuredPercentage=100,
+        riskpool_address=None,
     ):
         instanceService = instance.getInstanceService()
         instanceOperatorService = instance.getInstanceOperatorService()
         componentOwnerService = instance.getComponentOwnerService()
 
         print('------ setting up riskpool ------')
+        self.riskpool = None
+
+        if riskpool_address:
+            print('1) obtain riskpool from address {}'.format(riskpool_address))
+            self.riskpool = contract_from_address(RainRiskpool, riskpool_address)
+
+            return
 
         riskpoolKeeperRole = instanceService.getRiskpoolKeeperRole()
-        print('1) grant riskpool keeper role {} to riskpool keeper {}'.format(
-            riskpoolKeeperRole, riskpoolKeeper))
 
-        instanceOperatorService.grantRole(
-            riskpoolKeeperRole, 
-            riskpoolKeeper, 
-            {'from': instance.getOwner()})
+        if instanceService.hasRole(riskpoolKeeperRole, riskpoolKeeper):
+            print('1) riskpool keeper {} already has role {}'.format(
+                riskpoolKeeper, riskpoolKeeperRole))
+        else:
+            print('1) grant riskpool keeper role {} to riskpool keeper {}'.format(
+                riskpoolKeeperRole, riskpoolKeeper))
+
+            instanceOperatorService.grantRole(
+                riskpoolKeeperRole, 
+                riskpoolKeeper, 
+                {'from': instance.getOwner()})
 
         print('2) deploy riskpool {} by riskpool keeper {}'.format(
             name, riskpoolKeeper))
 
         self.riskpool = riskpoolContractClass.deploy(
             s2b(name),
-            collateralization,
+            sumOfSumInsuredCap,
+            sumInsuredPercentage,
             erc20Token,
             riskpoolWallet,
             instance.getRegistry(),
             {'from': riskpoolKeeper},
             publish_source=publish_source)
-
-        print('3) investor role granting to investor {} by riskpool keeper {}'.format(
-            investor, riskpoolKeeper))
-
-        self.riskpool.grantInvestorRole(
-            investor,
-            {'from': riskpoolKeeper},
-        )
-
-        print('4) riskpool {} proposing to instance by riskpool keeper {}'.format(
+        
+        print('3) riskpool {} proposing to instance by riskpool keeper {}'.format(
             self.riskpool, riskpoolKeeper))
         
-        componentOwnerService.propose(
+        tx = componentOwnerService.propose(
             self.riskpool,
             {'from': riskpoolKeeper})
+        
+        wait_for_confirmations(tx)
 
-        print('5) approval of riskpool id {} by instance operator {}'.format(
+        print('4) approval of riskpool id {} by instance operator {}'.format(
             self.riskpool.getId(), instance.getOwner()))
         
-        instanceOperatorService.approve(
+        tx = instanceOperatorService.approve(
             self.riskpool.getId(),
             {'from': instance.getOwner()})
 
-        print('6) set max number of bundles to {} by riskpool keeper {}'.format(
-            maxActiveBundles, riskpoolKeeper))
-        
+        wait_for_confirmations(tx)
+
+        print('5) set max number of bundles to {} by riskpool keeper {}'.format(
+            MAX_ACTIVE_BUNDLES, riskpoolKeeper))
+
         self.riskpool.setMaximumNumberOfActiveBundles(
             maxActiveBundles,
+            {'from': riskpoolKeeper})
+
+        # TODO set these to desired initial config
+        sumOfSumInsuredCap = self.riskpool.getSumOfSumInsuredCap()
+        bundleCap = int(sumOfSumInsuredCap / maxActiveBundles)
+
+        print('6) set capital caps [{}], sum of sum insured: {:.2f}, bundle cap: {:.2f}'.format(
+            erc20Token.symbol(),
+            sumOfSumInsuredCap/10**erc20Token.decimals(),
+            bundleCap/10**erc20Token.decimals()))
+
+        self.riskpool.setCapitalCaps(
+            sumOfSumInsuredCap,
+            bundleCap,
             {'from': riskpoolKeeper})
 
         print('7) riskpool wallet {} set for riskpool id {} by instance operator {}'.format(

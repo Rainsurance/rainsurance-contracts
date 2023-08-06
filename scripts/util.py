@@ -1,6 +1,12 @@
+import io
+import sys
+from contextlib import redirect_stdout
+from datetime import datetime
 from web3 import Web3
 
 from brownie import (
+    web3,
+    network,
     Contract, 
 )
 
@@ -9,6 +15,13 @@ from brownie.convert import to_bytes
 from brownie.network.account import Account
 
 CONFIG_DEPENDENCIES = 'dependencies'
+
+CHAIN_ID_MUMBAI = 80001
+CHAIN_ID_GOERLI = 5
+CHAIN_ID_MAINNET = 1
+
+CHAIN_IDS_REQUIRING_CONFIRMATIONS = [CHAIN_ID_MUMBAI, CHAIN_ID_GOERLI, CHAIN_ID_MAINNET]
+REQUIRED_TX_CONFIRMATIONS_DEFAULT = 2
 
 def s2h(text: str) -> str:
     return Web3.toHex(text.encode('ascii'))
@@ -75,3 +88,31 @@ def contractFromAddress(contractClass, contractAddress):
 
 def contract_from_address(contractClass, contractAddress):
     return Contract.from_abi(contractClass._name, contractAddress, contractClass.abi)
+
+def new_accounts(count=20):
+    buffer = io.StringIO()
+
+    with redirect_stdout(buffer):
+        account = accounts.add()
+
+    output = buffer.getvalue()
+    mnemonic = output.split('\x1b')[1][8:]
+
+    return accounts.from_mnemonic(mnemonic, count=count), mnemonic
+
+def wait_for_confirmations(
+    tx,
+    confirmations=REQUIRED_TX_CONFIRMATIONS_DEFAULT
+):
+    if web3.chain_id in CHAIN_IDS_REQUIRING_CONFIRMATIONS:
+        if not is_forked_network():
+            print('waiting for confirmations ...')
+            tx.wait(confirmations)
+        else:
+            print('not waiting for confirmations in a forked network...')
+
+def is_forked_network():
+    return 'fork' in network.show_active()
+
+def get_iso_datetime(timestamp):
+    return datetime.fromtimestamp(timestamp).isoformat()

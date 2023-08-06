@@ -39,6 +39,69 @@ ORACLE_SERVICE_NAME = 'OracleService'
 INSTANCE_OPERATOR_SERVICE_NAME = 'InstanceOperatorService'
 INSTANCE_SERVICE_NAME = 'InstanceService'
 
+# GIF States
+
+# enum BundleState {Active, Locked, Closed, Burned}
+BUNDLE_STATE = {
+    0: "Active",
+    1: "Locked",
+    2: "Closed",
+    3: "Burned",
+}
+
+# enum ApplicationState {Applied, Revoked, Underwritten, Declined}
+APPLICATION_STATE = {
+    0: "Applied",
+    1: "Revoked",
+    2: "Underwritten",
+    3: "Declined",
+}
+
+# enum PolicyState {Active, Expired, Closed}
+POLICY_STATE = {
+    0: "Active",
+    1: "Expired",
+    2: "Closed",
+}
+
+# enum ComponentState {
+#     Created,
+#     Proposed,
+#     Declined,
+#     Active,
+#     Paused,
+#     Suspended,
+#     Archived
+# }
+COMPONENT_STATE = {
+    0: "Created",
+    1: "Proposed",
+    2: "Declined",
+    3: "Active",
+    4: "Paused",
+    5: "Suspended",
+    6: "Archived"
+}
+
+# === Global registry/staking  =========================================================== #
+
+# enum ObjectState {
+#     Undefined,
+#     Proposed,
+#     Approved,
+#     Suspended,
+#     Archived,
+#     Burned
+# }
+OBJECT_STATE = {
+    0: "Undefined",
+    1: "Proposed",
+    2: "Approved",
+    3: "Suspended",
+    4: "Archived",
+    5: "Burned",
+}
+
 # GIF ecosystem actors
 INSTANCE_OPERATOR = 'instanceOperator'
 INSTANCE_WALLET = 'instanceWallet'
@@ -52,7 +115,9 @@ INSURER = 'insurer'
 CUSTOMER1 = 'customer1'
 CUSTOMER2 = 'customer2'
 REGISTRY_OWNER = 'registryOwner'
+STAKING = 'staking'
 STAKER = 'staker'
+STAKER2 = 'staker2'
 OUTSIDER = 'outsider'
 
 GIF_ACTOR = {
@@ -69,8 +134,19 @@ GIF_ACTOR = {
     CUSTOMER2: 10,
     REGISTRY_OWNER: 13,
     STAKER: 14,
+    STAKER2: 15,
     OUTSIDER: 19,
 }
+
+DIP_TOKEN = 'dipToken'
+ERC20_TOKEN = 'erc20Token'
+INSTANCE = 'instance'
+INSTANCE_SERVICE = 'instanceService'
+INSTANCE_OPERATOR_SERVICE = 'instanceOperatorService'
+COMPONENT_OWNER_SERVICE = 'componentOwnerService'
+PRODUCT = 'product'
+ORACLE = 'oracle'
+RISKPOOL = 'riskpool'
 
 # === GIF testing =========================================================== #
 

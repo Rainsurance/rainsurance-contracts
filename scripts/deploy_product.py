@@ -8,6 +8,7 @@ from brownie import (
     network,
     web3,
     Usdc,
+    DIP,
 )
 
 from scripts.product import (
@@ -42,71 +43,64 @@ from scripts.const import (
     CUSTOMER2,
     REGISTRY_OWNER,
     STAKER,
+    STAKING,
     OUTSIDER,
+    DIP_TOKEN,
+    ERC20_TOKEN,
+    INSTANCE,
+    INSTANCE_SERVICE,
+    INSTANCE_OPERATOR_SERVICE,
+    COMPONENT_OWNER_SERVICE,
+    PRODUCT,
+    ORACLE,
+    RISKPOOL
 )
-
-ERC20_TOKEN = 'erc20Token'
-INSTANCE = 'instance'
-INSTANCE_SERVICE = 'instanceService'
-INSTANCE_OPERATOR_SERVICE = 'instanceOperatorService'
-COMPONENT_OWNER_SERVICE = 'componentOwnerService'
-PRODUCT = 'product'
-ORACLE = 'oracle'
-RISKPOOL = 'riskpool'
 
 CHAIN_ID_MUMBAI = 80001
 CHAIN_IDS_WITH_GAS_PRICE = [CHAIN_ID_MUMBAI]
 
-def get_gas_price() -> int:
-    if web3.chain_id in CHAIN_IDS_WITH_GAS_PRICE:
-        return web3.eth.gas_price
-    
-    return GAS_PRICE
+INITIAL_ERC20_BUNDLE_FUNDING = 100000
 
-# mumbai price estimate
-GAS_PRICE = 1600000000
+# GAS_PRICE = web3.eth.gas_price
+GAS_PRICE = 25 * 10**9 # 25 gwei, mainnet: https://owlracle.info/eth, goerli: https://owlracle.info/goerli
 GAS_PRICE_SAFETY_FACTOR = 1.25
 
-GAS_S = 2000000
-GAS_M = 3 * GAS_S
-GAS_L = 10 * GAS_M
-
-gas_price = get_gas_price()
-REQUIRED_FUNDS_S = int(gas_price * GAS_PRICE_SAFETY_FACTOR * GAS_S)
-REQUIRED_FUNDS_M = int(gas_price * GAS_PRICE_SAFETY_FACTOR * GAS_M)
-REQUIRED_FUNDS_L = int(gas_price * GAS_PRICE_SAFETY_FACTOR * GAS_L)
+GAS_0 = 0
+GAS_S = 1 * 10**6
+GAS_M = 6 * 10**6
+GAS_L = 10 * 10**6
+GAS_XL = 60 * 10**6
 
 REQUIRED_FUNDS = {
-    INSTANCE_OPERATOR:          REQUIRED_FUNDS_L,
-    INSTANCE_WALLET:            REQUIRED_FUNDS_S,
-    PRODUCT_OWNER:              REQUIRED_FUNDS_M,
-    INSURER:                    REQUIRED_FUNDS_S,
-    ORACLE_PROVIDER:            REQUIRED_FUNDS_M,
-    CHAINLINK_NODE_OPERATOR:    REQUIRED_FUNDS_M,
-    RISKPOOL_KEEPER:            REQUIRED_FUNDS_M,
-    RISKPOOL_WALLET:            REQUIRED_FUNDS_S,
-    INVESTOR:                   REQUIRED_FUNDS_S,
-    CUSTOMER1:                  REQUIRED_FUNDS_S,
-    CUSTOMER2:                  REQUIRED_FUNDS_S,
+    INSTANCE_OPERATOR:          GAS_XL,
+    INSTANCE_WALLET:            GAS_S,
+    PRODUCT_OWNER:              GAS_L,
+    INSURER:                    GAS_S,
+    ORACLE_PROVIDER:            GAS_M,
+    CHAINLINK_NODE_OPERATOR:    GAS_M,
+    RISKPOOL_KEEPER:            GAS_L,
+    RISKPOOL_WALLET:            GAS_S,
+    INVESTOR:                   GAS_M,
+    CUSTOMER1:                  GAS_M,
+    CUSTOMER2:                  GAS_0,
 }
 
 
 def verify_deploy_base(
     from_component,
-    stakeholder_accounts, 
+    d, 
     erc20_token,
     product
 ):
     # define stakeholder accounts
-    a = stakeholder_accounts
-    instanceOperator=a[INSTANCE_OPERATOR]
-    instanceWallet=a[INSTANCE_WALLET]
-    riskpoolKeeper=a[RISKPOOL_KEEPER]
-    riskpoolWallet=a[RISKPOOL_WALLET]
-    oracleProvider=a[ORACLE_PROVIDER]
-    productOwner=a[PRODUCT_OWNER]
-    investor=a[INVESTOR]
-    customer=a[CUSTOMER1]
+    instanceOperator=d[INSTANCE_OPERATOR]
+    instanceWallet=d[INSTANCE_WALLET]
+    riskpoolKeeper=d[RISKPOOL_KEEPER]
+    riskpoolWallet=d[RISKPOOL_WALLET]
+    oracleProvider=d[ORACLE_PROVIDER]
+    productOwner=d[PRODUCT_OWNER]
+    investor=d[INVESTOR]
+    customer=d[CUSTOMER1]
 
     registry_address = product.getRegistry()
     product_id = product.getId()
@@ -157,9 +151,9 @@ def verify_deploy_base(
     print('ProductApplications {}'.format(product.applications()))
 
     print('--- inspect_bundles(d) ---')
-    inspect_bundles(stakeholder_accounts)
+    inspect_bundles_d(d)
     print('--- inspect_applications(d) ---')
-    inspect_applications(stakeholder_accounts)
+    inspect_applications_d(d)
 
 
 def verify_element(
@@ -219,31 +213,67 @@ def stakeholders_accounts_ganache():
     }
 
 
-def check_funds(stakeholders_accounts, erc20_token):
-    _print_constants()
-
+def check_funds(
+    stakeholders_accounts,
+    erc20_token,
+    gas_price=None,
+    safety_factor=GAS_PRICE_SAFETY_FACTOR,
+    print_requirements=False
+):
     a = stakeholders_accounts
 
-    native_token_success = True
-    fundsMissing = 0
-    for accountName, requiredAmount in REQUIRED_FUNDS.items():
-        if a[accountName].balance() >= REQUIRED_FUNDS[accountName]:
-            print('{} funding ok'.format(accountName))
-        else:
-            fundsMissing += REQUIRED_FUNDS[accountName] - a[accountName].balance()
-            print('{} needs {} but has {}'.format(
+    if not gas_price:
+        gas_price = get_gas_price()
+
+    gp = int(safety_factor * gas_price)
+
+    _print_constants(gas_price, safety_factor, gp)
+
+    if print_requirements:
+        print('--- funding requirements ---')
+        print('Name;Address;ETH')
+
+        for accountName, requiredAmount in REQUIRED_FUNDS.items():
+            print('{};{};{:.4f}'.format(
                 accountName,
-                REQUIRED_FUNDS[accountName],
-                a[accountName].balance()
+                a[accountName],
+                gp * requiredAmount / 10**18
+            ))
+
+        print('--- end of funding requirements ---')
+
+
+    checkedAccounts = 0
+    fundsAvailable = 0
+    fundsMissing = 0
+    native_token_success = True
+
+    for accountName, requiredAmount in REQUIRED_FUNDS.items():
+        balance = a[accountName].balance()
+        fundsAvailable += balance
+        checkedAccounts += 1
+
+        if balance >= gp * REQUIRED_FUNDS[accountName]:
+            print('{} funding OK, has [ETH]{:.5f} ([wei]{})'.format(
+                accountName,
+                balance/10**18,
+                balance))
+        else:
+            fundsMissing += gp * REQUIRED_FUNDS[accountName] - balance
+            print('{} needs [ETH]{:.5f}, has [ETH]{:.5f} ([wei]{})'.format(
+                accountName,
+                (gp * REQUIRED_FUNDS[accountName])/10**18,
+                balance/10**18,
+                balance
             ))
     
     if fundsMissing > 0:
         native_token_success = False
 
-        if a[INSTANCE_OPERATOR].balance() >= REQUIRED_FUNDS[INSTANCE_OPERATOR] + fundsMissing:
+        if a[INSTANCE_OPERATOR].balance() >= gp * REQUIRED_FUNDS[INSTANCE_OPERATOR] + fundsMissing:
             print('{} sufficiently funded with native token to cover missing funds'.format(INSTANCE_OPERATOR))
         else:
-            additionalFunds = REQUIRED_FUNDS[INSTANCE_OPERATOR] + fundsMissing - a[INSTANCE_OPERATOR].balance()
+            additionalFunds = gp * REQUIRED_FUNDS[INSTANCE_OPERATOR] + fundsMissing - a[INSTANCE_OPERATOR].balance()
             print('{} needs additional funding of {} ({} ETH) with native token to cover missing funds'.format(
                 INSTANCE_OPERATOR,
                 additionalFunds,
@@ -257,6 +287,9 @@ def check_funds(stakeholders_accounts, erc20_token):
         erc20_success = check_erc20_funds(a, erc20_token)
     else:
         print('WARNING: no erc20 token defined, skipping erc20 funds checking')
+
+    print('total funds available ({} accounts) [ETH] {:.6f}, [wei] {}'
+        .format(checkedAccounts, fundsAvailable/10**18, fundsAvailable))
 
     return native_token_success & erc20_success
 
@@ -272,30 +305,55 @@ def check_erc20_funds(a, erc20_token):
         print('IMPORTANT: manual transfer needed to ensure ERC20 funding')
         return False
 
-def amend_funds(stakeholders_accounts):
+
+def amend_funds(
+    stakeholders_accounts,
+    gas_price=None,
+    safety_factor=GAS_PRICE_SAFETY_FACTOR,
+):
+    if web3.chain_id == 1:
+        print('amend_funds not available on mainnet')
+        return
+
     a = stakeholders_accounts
+
+    if not gas_price:
+        gas_price = get_gas_price()
+
+    gp = int(safety_factor * gas_price)
+
+    _print_constants(gas_price, safety_factor, gp)
+
     for accountName, requiredAmount in REQUIRED_FUNDS.items():
-        if a[accountName].balance() < REQUIRED_FUNDS[accountName]:
-            missingAmount = REQUIRED_FUNDS[accountName] - a[accountName].balance()
-            print('funding {} with {}'.format(accountName, missingAmount))
-            a[INSTANCE_OPERATOR].transfer(a[accountName], missingAmount)
+        fundsMissing = gp * REQUIRED_FUNDS[accountName] - a[accountName].balance()
+
+        if fundsMissing > 0:
+            print('funding {} with {}'.format(accountName, fundsMissing))
+            a[INSTANCE_OPERATOR].transfer(a[accountName], fundsMissing)
 
     print('re-run check_funds() to verify funding before deploy')
 
 
-def _print_constants():
-    gas_price = get_gas_price()
+def get_gas_price():
+    return web3.eth.gas_price
+
+
+def _print_constants(gas_price, safety_factor, gp):
     print('chain id: {}'.format(web3.eth.chain_id))
-    print('gas price [Mwei]: {}'.format(gas_price/10**6))
-    print('gas price safety factor: {}'.format(GAS_PRICE_SAFETY_FACTOR))
+    print('gas price [GWei]: {}'.format(gas_price/10**9))
+    print('safe gas price [GWei]: {}'.format(gp/10**9))
+    print('gas price safety factor: {}'.format(safety_factor))
 
     print('gas S: {}'.format(GAS_S))
     print('gas M: {}'.format(GAS_M))
     print('gas L: {}'.format(GAS_L))
+    print('gas XL: {}'.format(GAS_XL))
 
-    print('required S [ETH]: {}'.format(REQUIRED_FUNDS_S / 10**18))
-    print('required M [ETH]: {}'.format(REQUIRED_FUNDS_M / 10**18))
-    print('required L [ETH]: {}'.format(REQUIRED_FUNDS_L / 10**18))
+    print('required S [ETH]: {}'.format(gp * GAS_S / 10**18))
+    print('required M [ETH]: {}'.format(gp * GAS_M / 10**18))
+    print('required L [ETH]: {}'.format(gp * GAS_L / 10**18))
+    print('required XL [ETH]: {}'.format(gp * GAS_XL / 10**18))
+
 
 def _get_balances(stakeholders_accounts):
     balance = {}
@@ -337,21 +395,25 @@ def _pretty_print_delta(title, balances_delta):
         print('account total: amount {}'.format(balances_delta['total']))
     print('=============================')
 
+
 def _add_tokens_to_deployment(
     deployment,
-    token
+    token,
+    dip=None
 ):
     deployment[ERC20_TOKEN] = token
+    if dip:
+        deployment[DIP_TOKEN] = dip
     return deployment
 
 
-def _copy_hashmap(map_in):
-    map_out = {}
+# def _copy_hashmap(map_in):
+#     map_out = {}
 
-    for key, value in elements(map_in):
-        map_out[key] = value
+#     for key, value in elements(map_in):
+#         map_out[key] = value
     
-    return map_out
+#     return map_out
 
 
 def _add_instance_to_deployment(
@@ -379,6 +441,7 @@ def _add_product_to_deployment(
     deployment[RISKPOOL] = riskpool
 
     return deployment
+
 
 def register_oracle_with_gif_instance(oracleAddress: Account, oracleClass):
 
@@ -415,6 +478,7 @@ def register_oracle_with_gif_instance(oracleAddress: Account, oracleClass):
     instanceOperatorService.approve(
         oracle.getId(),
         {'from': instance.getOwner()})
+
 
 def all_in_1_base(
     base_name,
@@ -534,30 +598,13 @@ def all_in_1_base(
     deployment = _add_product_to_deployment(deployment, product, oracle, riskpool)
 
     print('====== create risk bundle ======')
-
-    # approval for payouts or pulling out funds by investor
-    token.approve(
-        instance_service.getTreasuryAddress(),
-        RISKPOOL_WALLET_ALLOWANCE,
-        {'from': deployment[RISKPOOL_WALLET]})
-
-    bundle_id = create_bundle(
-        instance, 
-        instanceOperator,
-        riskpool,
-        investor)
+    bundle_id = create_bundle(deployment)
 
     print('====== create risk ======')
-    risk_id = create_risk(product, insurer)
+    risk_id = create_risk(deployment)
 
     print('====== create policy ======')
-    process_id = create_policy(
-        instance, 
-        instanceOperator,
-        product,
-        risk_id,
-        customer,
-        insurer)
+    process_id = create_policy(deployment, bundle_id, risk_id)
 
     balances_after_setup = _get_balances(a)
     print('--------------------------------------------------------------------')
@@ -604,16 +651,19 @@ def all_in_1_base(
         deployment)
 
 
+#TODO: remover?
 def get_riskpool_token(riskpool):
     tokenAddress = riskpool.getErc20Token()
     return contract_from_address(interface.IERC20Metadata, tokenAddress)
 
 
+#TODO: remover?
 def get_product_token(product):
     tokenAddress = product.getToken()
     return contract_from_address(interface.IERC20Metadata, tokenAddress)
 
 
+#TODO: remover?
 def fund_and_create_allowance(
     instance,
     instanceOperator,
@@ -626,12 +676,15 @@ def fund_and_create_allowance(
     token.approve(instanceService.getTreasuryAddress(), funding, {'from': recipient})
 
 
+#TODO: remover?
 def get_bundle_id(tx):
     return tx.events['LogRiskpoolBundleCreated']['bundleId']
 
 
+#TODO: remover?
 def get_process_id(tx):
     return tx.events['LogMetadataCreated']['processId']
+
 
 def get_address(name):
     if not exists('gif_instance_address.txt'):
@@ -645,18 +698,22 @@ def get_address(name):
     return None
 
 
-def inspect_applications(d):
+def inspect_applications_d(d):
     instanceService = d[INSTANCE_SERVICE]
     product = d[PRODUCT]
     riskpool = d[RISKPOOL]
     token = d[ERC20_TOKEN]
 
+    inspect_applications(instanceService, product, riskpool, token)
+
+
+def inspect_applications(instanceService, product, riskpool, token):
     mult_token = 10**token.decimals()
 
     processIds = product.applications()
 
     # print header row
-    print('i customer product id type state object premium suminsured')
+    print('i customer product id type state wallet premium suminsured duration bundle maxpremium')
 
     # print individual rows
     for idx in range(processIds):
@@ -671,6 +728,16 @@ def inspect_applications(d):
         suminsured = application[2]
         appdata = application[3]
 
+        (
+            wallet,
+            protected_balance,
+            duration,
+            bundle_id,
+            maxpremium,
+            place,
+            riskId
+        ) = riskpool.decodeApplicationParameterFromData(appdata)
+
         if state == 2:
             policy = instanceService.getPolicy(processId)
             state = policy[0]
@@ -679,15 +746,21 @@ def inspect_applications(d):
             policy = None
             kind = 'application'
 
-        print('{} {} {} {} {} {} {:.1f} {:.1f}'.format(
+        print('{} {} {} {} {} {} {} {} {} {:.1f} {:.1f} {} {} {:.1f}'.format(
             idx,
             _shortenAddress(customer),
             productId,
+            place,
+            riskId,
             processId,
             kind,
             state,
+            _shortenAddress(wallet),
             premium/mult_token,
             suminsured/mult_token,
+            duration/(24*3600),
+            str(bundle_id) if bundle_id > 0 else 'n/a',
+            maxpremium/mult_token,
         ))
 
 
@@ -702,51 +775,129 @@ def get_bundle_data(
     riskpool
 ):
     bundle_nft = contract_from_address(interface.IERC721, instanceService.getBundleToken())
-    active_bundles = riskpool.activeBundles()
-    bundle_data = []
+    riskpoolId = riskpool.getId()
+    activeBundleIds = riskpool.getActiveBundleIds()
+    bundleData = []
 
-    for idx in range(active_bundles):
-        bundle_id = riskpool.getActiveBundleId(idx)
-        bundle = instanceService.getBundle(bundle_id).dict()
+    for idx in range(len(activeBundleIds)):
+        bundleId = activeBundleIds[idx]
+        bundle = instanceService.getBundle(bundleId)
+        applicationFilter = bundle[4]
+        (
+            name,
+            lifetime,
+            minSumInsured,
+            maxSumInsured,
+            minDuration,
+            maxDuration,
+            place
 
-        bundle_data.append({
+        ) = riskpool.decodeBundleParamsFromFilter(applicationFilter)
+
+        capital = bundle[5]
+        locked = bundle[6]
+        capacity = bundle[5]-bundle[6]
+        policies = riskpool.getActivePolicies(bundleId)
+
+        bundleData.append({
             'idx':idx,
             'owner':bundle_nft.ownerOf(bundle['tokenId']),
-            'riskpoolId':bundle['riskpoolId'],
-            'bundleId':bundle_id,
-            'capital':bundle['capital'],
-            'locked':bundle['lockedCapital'],
-            'capacity':bundle['capital'] - bundle['lockedCapital']
+            'riskpoolId':riskpoolId,
+            'bundleId':bundleId,
+            'name':name,
+            'lifetime':lifetime/(24*3600),
+            'minSumInsured':minSumInsured,
+            'maxSumInsured':maxSumInsured,
+            'minDuration':minDuration/(24*3600),
+            'maxDuration':maxDuration/(24*3600),
+            'capital':capital,
+            'locked':locked,
+            'capacity':capacity,
+            'policies':policies,
+            'place':place,
         })
 
-    return bundle_data
+    return bundleData
 
 
-def inspect_bundles(d):
+def inspect_bundles_d(d):
     instanceService = d[INSTANCE_SERVICE]
     riskpool = d[RISKPOOL]
     token = d[ERC20_TOKEN]
 
+    inspect_bundles(instanceService, riskpool, token)
+
+
+def inspect_bundles(instanceService, riskpool, token):
     mult_token = 10 ** token.decimals()
     bundleData = get_bundle_data(instanceService, riskpool)
 
     # print header row
-    print('i owner riskpool bundle token capital locked capacity')
+    print('i owner riskpool bundle name token minsuminsured maxsuminsured lifetime minduration maxduration capital locked capacity staking policies')
 
     # print individual rows
     for idx in range(len(bundleData)):
         b = bundleData[idx]
+        bi = riskpool.getBundleInfo(b['bundleId']).dict()
 
-        print('{} {} {} {} {} {:.1f} {:.1f} {:.1f}'.format(
+        if b['name'] == '':
+            b['name'] = None
+
+        print('{} {} {} {} {} {} {:.1f} {:.1f} {} {} {} {:.1f} {:.1f} {:.1f} {:.1f} {}'.format(
             b['idx'],
             _shortenAddress(b['owner']),
             b['riskpoolId'],
             b['bundleId'],
+            b['name'],
             token.symbol(),
+            b['minSumInsured']/mult_token,
+            b['maxSumInsured']/mult_token,
+            b['lifetime'],
+            b['minDuration'],
+            b['maxDuration'],
             b['capital']/mult_token,
             b['locked']/mult_token,
-            b['capacity']/mult_token
+            b['capacity']/mult_token,
+            bi['capitalSupportedByStaking']/mult_token,
+            b['policies']
         ))
+
+
+def inspect_bundle(d, bundleId):
+    instanceService = d[INSTANCE_SERVICE]
+    riskpool = d[RISKPOOL]
+
+    bundle = instanceService.getBundle(bundleId).dict()
+    filter = bundle['filter']
+    (
+        name,
+        lifetime,
+        minSumInsured,
+        maxSumInsured,
+        minDuration,
+        maxDuration,
+        place
+
+    ) = riskpool.decodeBundleParamsFromFilter(filter)
+
+    if name == '':
+        name = None
+    
+    sPerD = 24 * 3600
+    print('bundle {} riskpool {}'.format(bundleId, bundle['riskpoolId']))
+    print('- nft {}'.format(bundle['tokenId']))
+    print('- state {}'.format(bundle['state']))
+    print('- filter')
+    print('  + name {}'.format(name))
+    print('  + lifetime {} [days]'.format(lifetime/sPerD))
+    print('  + sum insured {}-{} [USD2]'.format(minSumInsured, maxSumInsured))
+    print('  + coverage duration {}-{} [days]'.format(minDuration/sPerD, maxDuration/sPerD))
+    print('  + place {}'.format(name))
+    print('- financials')
+    print('  + capital {}'.format(bundle['capital']))
+    print('  + locked {}'.format(bundle['lockedCapital']))
+    print('  + capacity {}'.format(bundle['capital']-bundle['lockedCapital']))
+    print('  + balance {}'.format(bundle['balance']))
 
 
 def from_component_base(
