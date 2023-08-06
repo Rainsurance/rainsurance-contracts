@@ -15,8 +15,9 @@ from scripts.product import (
 )
 
 from scripts.setup import (
-    fund_riskpool,
-    fund_customer,
+    ONE_DAY_DURATION,
+    create_bundle,
+    fund_account,
 )
 
 from scripts.instance import GifInstance
@@ -52,6 +53,8 @@ def test_underwrite_after_apply_with_riskpool_empty(
     token = gifProduct.getToken()
     assert token.balanceOf(riskpoolWallet) == 0
 
+    tf = 10 ** token.decimals()
+
     riskpoolBalanceBeforeFunding = token.balanceOf(riskpoolWallet)
     assert 0 == riskpoolBalanceBeforeFunding
     
@@ -61,47 +64,47 @@ def test_underwrite_after_apply_with_riskpool_empty(
     sumInsured = 2000
 
     # ensure the riskpool is funded, but too low for insurance
-    riskpoolFunding = 1000
-    fund_riskpool(
+    bundleFunding = 1000
+
+    bundleId = create_bundle(
         instance, 
         instanceOperator, 
-        riskpoolWallet, 
-        riskpool, 
         investor, 
-        token, 
-        riskpoolFunding)
+        riskpool,
+        funding=bundleFunding)
+    
     riskpoolBalanceAfterFunding = token.balanceOf(riskpoolWallet)
     assert riskpoolBalanceAfterFunding > 0
 
     print('--- test setup customer --------------------------')
 
     customerFunding = 5000
-    fund_customer(instance, instanceOperator, customer, token, customerFunding)
+    fund_account(instance, instanceOperator, customer, token, customerFunding * tf)
 
     print('--- apply for policy on underfunded riskpool --------------------------')
     # ensure application works for policy with underfunded riskpool
-    tx = product.applyForPolicy(customer, premium, sumInsured, riskId, {'from': insurer})
-    process_id = tx.return_value
+    tx = product.applyForPolicyWithBundle(customer, premium * tf, sumInsured * tf, riskId, bundleId, {'from': customer})
+    processId = tx.return_value
     events = tx.events
     print(events)
 
-    assert 'LogRainPolicyApplicationCreated' in events
+    assert 'LogRainApplicationCreated' in events
     assert 'LogRiskpoolCollateralizationFailed' in events
 
     assert 'LogRainPolicyCreated' not in events
     
     # ensure application exists and has state Applied
-    application = instanceService.getApplication(process_id)
+    application = instanceService.getApplication(processId)
     assert 0 == application[0] # ApplicationState.Applied
 
     assert 1 == product.applications()
     assert 0 == product.policies(riskId)
 
-    assert process_id == product.getApplicationId(0)
+    assert processId == product.getApplicationId(0)
 
     # ensure that explicity underwriting still fails
-    tx = product.underwrite(process_id, {'from': insurer})
-    assert False == tx.return_value
+    with brownie.reverts("ERROR:RAIN-019:UNDERWRITING_FAILED"):
+        tx = product.underwrite(processId, {'from': insurer})
     
     events = tx.events
     print(events)
@@ -110,24 +113,23 @@ def test_underwrite_after_apply_with_riskpool_empty(
     print('--- fully fund riskpool --------------------------')
     # ensure the riskpool is fully funded
     riskpool.setMaximumNumberOfActiveBundles(2, {'from': riskpoolKeeper})
-    riskpoolFunding = 20000
-    fund_riskpool(
-        instance, 
-        instanceOperator, 
-        riskpoolWallet, 
-        riskpool, 
-        investor, 
-        token, 
-        riskpoolFunding)
+    bundleFunding = 20_000
+
+    fund_account(instance, instanceOperator, investor, token, bundleFunding * tf)
+    
+    riskpool.fundBundle(
+            bundleId,
+            bundleFunding * tf,
+            {'from': investor})
 
     # check riskpool funds and book keeping after funding
     riskpoolBalanceAfter2ndFunding = token.balanceOf(riskpoolWallet)
     assert riskpoolBalanceAfter2ndFunding > riskpoolBalanceAfterFunding
-    assert riskpool.bundles() == 2
+    assert riskpool.bundles() == 1
     
     print('--- underwrite application --------------------------')
     # now underwrite the policy as the riskpool is now funded
-    tx = product.underwrite(process_id, {'from': insurer})
+    tx = product.underwrite(processId, {'from': insurer})
     assert True == tx.return_value
 
     events = tx.events
@@ -135,7 +137,7 @@ def test_underwrite_after_apply_with_riskpool_empty(
     assert 'LogRainPolicyCreated' in events
 
     # ensure application exists and has state Applied
-    application = instanceService.getApplication(process_id)
+    application = instanceService.getApplication(processId)
     assert 2 == application[0] # ApplicationState.Underwritten
 
 def test_underwrite_invalid_policy_id(
@@ -148,13 +150,12 @@ def test_underwrite_invalid_policy_id(
         tx = product.underwrite(s2b32('does_not_exist'), {'from': insurer})
 
 
-
 def prepare_risk(product, insurer):
     print('--- test setup risks -------------------------------------')
 
     startDate = time.time() + 100
-    endDate = time.time() + 1000
-    placeId = s2b32('10001.saopaulo') # mm 
+    endDate = startDate + ONE_DAY_DURATION
+    place = '10001.saopaulo'
     latFloat = -23.550620
     longFloat = -46.634370
     triggerFloat = 0.1 # %
@@ -172,5 +173,5 @@ def prepare_risk(product, insurer):
     exit = multiplier * exitFloat
     precHist = precMultiplier * precHistFloat
 
-    tx = product.createRisk(startDate, endDate, placeId, lat, long, trigger, exit, precHist, precDays, {'from': insurer})
+    tx = product.createRisk(startDate, endDate, place, lat, long, trigger, exit, precHist, precDays, {'from': insurer})
     return tx.return_value

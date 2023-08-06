@@ -8,6 +8,9 @@ import "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 
 import "@etherisc/gif-interface/contracts/components/Product.sol";
 import "@etherisc/gif-contracts/contracts/shared/TransferHelper.sol";
+import "@etherisc/gif-contracts/contracts/modules/TreasuryModule.sol";
+
+import "./RainRiskpool.sol";
 
 contract RainProduct is 
     Product, 
@@ -28,12 +31,19 @@ contract RainProduct is
 
     uint256 public constant PRECIPITATION_MIN = 0;
     uint256 public constant PRECIPITATION_MAX = 10000;
+
+    uint256 public constant RISK_DURATION_MIN = 1 * 24 * 3600; // 1 day
+    uint256 public constant RISK_DURATION_MAX = 15 * 24 * 3600; // 15 days
+
+    // constant as each policy has max 1 claim
+    uint256 public constant CLAIM_ID = 0;
     
     struct Risk {
         bytes32 id; // hash over placeId, start, end
         uint256 startDate; // ~ cropId
         uint256 endDate;
         bytes32 placeId; // ~ uaiId
+        string place;
         int256 lat;
         int256 long;
         uint256 trigger;  // at and bellow this precipitation no payout is made (%)
@@ -49,18 +59,21 @@ contract RainProduct is
         uint256 createdAt;
         uint256 updatedAt;
     }
-    struct Process {
-        bytes32 riskId;
-        bytes32 processId;
-        uint256 startDate;
-        uint256 endDate;
-        bytes32 placeId;
-        uint256 precHist;
-        uint256 sumInsured;
-    }
+    // struct Process {
+    //     bytes32 riskId;
+    //     bytes32 processId;
+    //     uint256 startDate;
+    //     uint256 endDate;
+    //     bytes32 placeId;
+    //     uint256 precHist;
+    //     uint256 sumInsured;
+    // }
 
     uint256 private _oracleId;
     IERC20 private _token;
+
+    RainRiskpool private _riskpool;
+    TreasuryModule private _treasury;
 
     // variables
     bytes32 [] private _riskIds;
@@ -68,11 +81,11 @@ contract RainProduct is
     mapping(bytes32 /* riskId */ => EnumerableSet.Bytes32Set /* processIds */) private _policies;
     bytes32 [] private _applications; // useful for debugging, might need to get rid of this
     mapping(address /* policyHolder */ => bytes32 [] /* processIds */) private _processIdsForHolder; // hold list of applications/policies Ids for address
-    mapping(address /* policyHolder */ => Process [] /* processIds */) private _processesForHolder; // hold list of applications/policies for address
+    // mapping(address /* policyHolder */ => Process [] /* processIds */) private _processesForHolder; // hold list of applications/policies for address
 
     // events
-    event LogRainPolicyApplicationCreated(bytes32 policyId, address policyHolder, uint256 premiumAmount, uint256 sumInsuredAmount);
-    event LogRainPolicyCreated(bytes32 policyId, address policyHolder, uint256 premiumAmount, uint256 sumInsuredAmount);
+    event LogRainApplicationCreated(bytes32 processId, address policyHolder, address wallet, uint256 premiumAmount, uint256 sumInsuredAmount);
+    event LogRainPolicyCreated(bytes32 processId, address policyHolder, uint256 premiumAmount, uint256 sumInsuredAmount);
     event LogRainOracleCallbackReceived(uint256 requestId, bytes32 processId, bytes fireCategory);
     event LogRainClaimConfirmed(bytes32 processId, uint256 claimId, uint256 payoutAmount);
     event LogRainPayoutExecuted(bytes32 processId, uint256 claimId, uint256 payoutId, uint256 payoutAmount);
@@ -85,6 +98,13 @@ contract RainProduct is
     event LogRainRiskDataRequestCancelled(bytes32 processId, uint256 requestId);
     event LogRainRiskDataReceived(uint256 requestId, bytes32 riskId, uint256 precActual);
 
+    modifier onlyMatchingPolicy(bytes32 processId) {
+        require(
+            this.getId() == _instanceService.getMetadata(processId).productId, 
+            "ERROR:RAIN-006:PRODUCT_MISMATCH"
+        );
+        _;
+    }
 
     constructor(
         bytes32 productName,
@@ -99,6 +119,12 @@ contract RainProduct is
         _token = IERC20(token);
         _oracleId = oracleId;
 
+        IComponent poolComponent = _instanceService.getComponent(riskpoolId); 
+        address poolAddress = address(poolComponent);
+
+        _riskpool = RainRiskpool(poolAddress);
+        _treasury = TreasuryModule(_instanceService.getTreasuryAddress());
+
         _setupRole(DEFAULT_ADMIN_ROLE, _msgSender());
         _setupRole(INSURER_ROLE, insurer);
     }
@@ -106,7 +132,7 @@ contract RainProduct is
     function createRisk(
         uint256 startDate,
         uint256 endDate,
-        bytes32 placeId,
+        string calldata place,
         int256 lat,
         int256 long,
         uint256 trigger,
@@ -121,10 +147,12 @@ contract RainProduct is
 
         _validateRiskParameters(trigger, exit);
         //TODO: uncomment the line below (commented for testing purposes)
-        //require(startDate > block.timestamp, "ERROR:RAIN-044:RISK_START_DATE_INVALID"); // solhint-disable-line
+        require(startDate > block.timestamp, "ERROR:RAIN-044:RISK_START_DATE_INVALID"); // solhint-disable-line
         require(endDate > startDate, "ERROR:RAIN-045:RISK_END_DATE_INVALID");
+        require(endDate - startDate>= RISK_DURATION_MIN, "ERROR:RAIN-046:RISK_DURATION_MIN_INVALID");
+        require(endDate - startDate<= RISK_DURATION_MAX, "ERROR:RAIN-047:RISK_DURATION_MAX_INVALID");
 
-        riskId = getRiskId(placeId, startDate, endDate);
+        riskId = getRiskId(place, startDate, endDate);
         _riskIds.push(riskId);
 
         Risk storage risk = _risks[riskId];
@@ -133,7 +161,8 @@ contract RainProduct is
         risk.id = riskId;
         risk.startDate = startDate;
         risk.endDate = endDate;
-        risk.placeId = placeId;
+        risk.placeId = keccak256(abi.encodePacked(place));
+        risk.place = place;
         risk.lat = lat;
         risk.long = long;
         risk.trigger = trigger;
@@ -169,12 +198,12 @@ contract RainProduct is
         risk.trigger = trigger;
         risk.exit = exit;
         risk.precHist = precHist;
-        risk.precHist = precDays;
+        risk.precDays = precDays;
         risk.updatedAt = block.timestamp; // solhint-disable-line
     }
 
     function getRiskId(
-        bytes32 placeId,
+        string calldata place,
         uint256 startDate,
         uint256 endDate
     )
@@ -182,55 +211,125 @@ contract RainProduct is
         pure
         returns(bytes32 riskId)
     {
-        riskId = keccak256(abi.encode(placeId, startDate, endDate));
+        riskId = keccak256(abi.encode(place, startDate, endDate));
     }
 
-    function applyForPolicy(
-        address policyHolder, 
+    function applyForPolicyWithBundle(
+        address protectedWallet, 
         uint256 premium, 
         uint256 sumInsured,
-        bytes32 riskId
+        bytes32 riskId,
+        uint256 bundleId
+        //string calldata place
     ) 
         external 
-        onlyRole(INSURER_ROLE)
+        //onlyRole(INSURER_ROLE)
+        returns(bytes32 processId)
+    {
+        return _applyForPolicyWithBundle(
+            msg.sender, // policyHolder
+            protectedWallet,
+            premium,
+            sumInsured,
+            riskId,
+            bundleId
+            //place
+        );
+    }
+
+    function _applyForPolicyWithBundle(
+        address policyHolder, 
+        address wallet,
+        uint256 premium, 
+        uint256 sumInsured,
+        bytes32 riskId,
+        uint256 bundleId
+       // string calldata place
+    ) 
+        internal 
         returns(bytes32 processId)
     {
         Risk storage risk = _risks[riskId];
         require(risk.createdAt > 0, "ERROR:RAIN-004:RISK_UNDEFINED");
-        require(policyHolder != address(0), "ERROR:RAIN-005:POLICY_HOLDER_ZERO");
+        require(wallet != address(0), "ERROR:RAIN-005:POLICY_HOLDER_ZERO");
+        require(bundleId > 0, "ERROR:RAIN-015:BUNDLE_ID_ZERO");
 
-        bytes memory metaData = "";
-        bytes memory applicationData = abi.encode(riskId);
+        IBundle.Bundle memory bundle = _instanceService.getBundle(bundleId);
+        require(
+            bundle.riskpoolId == _riskpool.getId(),
+            "ERROR:RAIN-016:RISKPOOL_MISMATCH");
+
+        uint256 premiumPlusFees = calculatePremium(premium);
+
+        // ensure policy holder has sufficient balance and allowance
+        // require(
+        //     _token.balanceOf(policyHolder) >= premiumPlusFees, 
+        //     "ERROR:RAIN-017:BALANCE_TOO_LOW");
+
+        // require(
+        //     _token.allowance(policyHolder, _instanceService.getTreasuryAddress()) >= premiumPlusFees, 
+        //     "ERROR:RAIN-018:ALLOWANCE_TOO_LOW");
+
+        uint256 duration = (risk.endDate - risk.startDate);
+        bytes memory applicationData = _riskpool.encodeApplicationParameterAsData(
+            wallet,
+            sumInsured,
+            duration,
+            bundleId,
+            premium,
+            risk.place,
+            riskId
+        );
 
         processId = _newApplication(
             policyHolder, 
-            premium, 
+            premiumPlusFees, 
             sumInsured,
-            metaData,
+            "", // metaData
             applicationData);
 
         _applications.push(processId);
 
         // remember for which policy holder this application is
         _processIdsForHolder[policyHolder].push(processId);
-        _processesForHolder[policyHolder].push(
-            Process(
-                risk.id, 
-                processId, 
-                risk.startDate, 
-                risk.endDate, 
-                risk.placeId, 
-                risk.precHist,
-                sumInsured)
-        );
+        // _processesForHolder[policyHolder].push(
+        //     Process(
+        //         risk.id, 
+        //         processId, 
+        //         risk.startDate, 
+        //         risk.endDate, 
+        //         risk.placeId, 
+        //         risk.precHist,
+        //         sumInsured)
+        // );
 
-        emit LogRainPolicyApplicationCreated(
+        // in case the protected wallet is different from policy holder:
+        // also remember for which wallet address the appplication is
+        if(wallet != policyHolder) {
+            _processIdsForHolder[wallet].push(processId);
+            // _processesForHolder[wallet].push(
+            //     Process(
+            //         risk.id, 
+            //         processId, 
+            //         risk.startDate, 
+            //         risk.endDate, 
+            //         risk.placeId, 
+            //         risk.precHist,
+            //         sumInsured)
+            // );
+        }
+
+        emit LogRainApplicationCreated(
             processId, 
             policyHolder, 
-            premium, 
+            wallet,
+            premiumPlusFees, 
             sumInsured);
 
         bool success = _underwrite(processId);
+
+        // ensure underwriting is successful
+        // require(success, "ERROR:RAIN-019:UNDERWRITING_FAILED");
 
         if (success) {
             EnumerableSet.add(_policies[riskId], processId);
@@ -238,7 +337,7 @@ contract RainProduct is
             emit LogRainPolicyCreated(
                 processId, 
                 policyHolder, 
-                premium, 
+                premiumPlusFees, 
                 sumInsured);
         }
     }
@@ -253,6 +352,9 @@ contract RainProduct is
         // ensure the application for processId exists
         _getApplication(processId);
         success = _underwrite(processId);
+
+        // ensure underwriting is successful
+        require(success, "ERROR:RAIN-019:UNDERWRITING_FAILED");
 
         if (success) {
             IPolicy.Application memory application = _getApplication(processId);
@@ -443,7 +545,7 @@ contract RainProduct is
         onlyRole(INSURER_ROLE)
     {
         IPolicy.Application memory application = _getApplication(policyId);
-        bytes32 riskId = abi.decode(application.data, (bytes32));
+        bytes32 riskId = _getRiskId(policyId);
         Risk memory risk = _risks[riskId];
 
         require(risk.id == riskId, "ERROR:RAIN-031:RISK_ID_INVALID");
@@ -513,6 +615,56 @@ contract RainProduct is
         payoutPercentage = min(PERCENTAGE_MULTIPLIER, PERCENTAGE_MULTIPLIER * extra / exit);
     }
 
+    // TODO this functionality should be provided by GIF (TreasuryModule)
+    function calculatePremium(uint256 netPremium) public view returns(uint256 premiumAmount) {
+        ITreasury.FeeSpecification memory feeSpec = getFeeSpecification(getId());
+        uint256 fractionFullUnit = _treasury.getFractionFullUnit();
+        uint256 fraction = feeSpec.fractionalFee;
+        uint256 fixedFee = feeSpec.fixedFee;
+
+        premiumAmount = fractionFullUnit * (netPremium + fixedFee);
+        premiumAmount /= fractionFullUnit - fraction;
+
+        // premiumAmount = fixedFee + netPremium * (fractionFullUnit + fraction) / fractionFullUnit;
+    }
+
+    // TODO make this available via instance service
+    function getFeeSpecification(uint256 componentId)
+        public
+        view
+        returns(ITreasury.FeeSpecification memory feeSpecification)
+    {
+        feeSpecification = _treasury.getFeeSpecification(componentId);
+    }
+
+    // convencience function for frontend, api, ...
+    function getClaimData(bytes32 processId)
+        external 
+        view 
+        onlyMatchingPolicy(processId)
+        returns(
+            address wallet,
+            bool hasClaim,
+            uint256 claimId,
+            IPolicy.ClaimState claimState,
+            uint256 claimAmount,
+            uint256 claimCreatedAt
+        ) 
+    {
+        wallet = getProtectedWallet(processId);
+        IPolicy.Claim memory claim = _getClaim(processId, CLAIM_ID);
+        hasClaim = claim.createdAt > 0;
+
+        return (
+            wallet,
+            hasClaim,
+            CLAIM_ID,
+            claim.state,
+            claim.claimAmount,
+            claim.createdAt
+        );
+    }
+
     function getPercentageMultiplier() external pure returns(uint256 multiplier) {
         return PERCENTAGE_MULTIPLIER;
     }
@@ -536,6 +688,11 @@ contract RainProduct is
     // function b2s(bytes32 input) public pure returns (string memory output) {
     //     output = string(abi.encodePacked(input));
     // }
+
+    function getProtectedWallet(bytes32 processId) public view returns(address wallet) {
+        bytes memory applicationData = _getApplication(processId).data;
+        (wallet,,,,,,) = _riskpool.decodeApplicationParameterFromData(applicationData);
+    }
 
     function risks() external view returns(uint256) { return _riskIds.length; }
     function getRiskId(uint256 idx) external view returns(bytes32 riskId) { return _riskIds[idx]; }
@@ -563,13 +720,13 @@ contract RainProduct is
         return _processIdsForHolder[policyHolder];
     }
 
-    function processForHolder(address policyHolder, uint256 processIdx)
-        external 
-        view
-        returns(Process memory)
-    {
-        return _processesForHolder[policyHolder][processIdx];
-    }
+    // function processForHolder(address policyHolder, uint256 processIdx)
+    //     external 
+    //     view
+    //     returns(Process memory)
+    // {
+    //     return _processesForHolder[policyHolder][processIdx];
+    // }
 
     function getProcessId(address policyHolder, uint256 idx)
         external 
@@ -596,8 +753,8 @@ contract RainProduct is
     }
 
     function _getRiskId(bytes32 processId) private view returns(bytes32 riskId) {
-        IPolicy.Application memory application = _getApplication(processId);
-        (riskId) = abi.decode(application.data, (bytes32));
+        bytes memory applicationData = _getApplication(processId).data;
+        (,,,,,,riskId) = _riskpool.decodeApplicationParameterFromData(applicationData);
     }
 
 }

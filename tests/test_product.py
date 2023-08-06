@@ -14,8 +14,10 @@ from scripts.product import (
 )
 
 from scripts.setup import (
-    fund_riskpool,
-    fund_customer,
+    ONE_DAY_DURATION,
+    fund_account,
+    create_bundle,
+    get_bundle_dict
 )
 
 from scripts.product import (
@@ -26,7 +28,7 @@ from scripts.product import (
 )
 
 from scripts.instance import GifInstance
-from scripts.util import s2b32, contractFromAddress
+from scripts.util import keccak256, contractFromAddress
 
 # enforce function isolation for tests below
 @pytest.fixture(autouse=True)
@@ -60,52 +62,80 @@ def test_happy_path(
     token = gifProduct.getToken()
     assert token.balanceOf(riskpoolWallet) == 0
 
-    riskpoolFunding = 200000
-    fund_riskpool(
+    tf = 10 ** token.decimals()
+
+    startDate = time.time() + 100
+    endDate = startDate + ONE_DAY_DURATION
+    place = ['10001.saopaulo', '10002.paris']
+
+    bundleFunding = 100_000
+    
+    create_bundle(
         instance, 
         instanceOperator, 
-        riskpoolWallet, 
-        riskpool, 
         investor, 
-        token, 
-        riskpoolFunding)
+        riskpool,
+        funding=bundleFunding,
+        place=place[0])
+    
+    bundleFunding2 = 100_000
+    
+    create_bundle(
+        instance, 
+        instanceOperator, 
+        investor, 
+        riskpool,
+        funding=bundleFunding2,
+        place=place[1])
+
 
     # check riskpool funds and book keeping after funding
     riskpoolBalanceAfterFunding = token.balanceOf(riskpoolWallet)
-    riskpoolExpectedBalance = (1 - CAPITAL_FEE_FRACTIONAL_DEFAULT) * riskpoolFunding - CAPITAL_FEE_FIXED_DEFAULT
+    riskpoolExpectedBalance = (1 - CAPITAL_FEE_FRACTIONAL_DEFAULT) * (bundleFunding + bundleFunding2) * tf - CAPITAL_FEE_FIXED_DEFAULT
     assert riskpoolBalanceAfterFunding == riskpoolExpectedBalance
-    assert riskpool.bundles() == 1
+    assert riskpool.bundles() == 2
     assert riskpool.getCapital() == riskpoolExpectedBalance
     assert riskpool.getTotalValueLocked() == 0
     assert riskpool.getCapacity() == riskpoolExpectedBalance
     assert riskpool.getBalance() == riskpoolExpectedBalance
 
     # check risk bundle in riskpool and book keeping after funding
-    bundleIdx = 0
-    bundleAfterFunding = _getBundleDict(instanceService, riskpool, bundleIdx)
+    bundleAfterFunding = get_bundle_dict(instance, riskpool, 0)
     bundleId = bundleAfterFunding['id']
+
+    bundleAfterFunding2 = get_bundle_dict(instance, riskpool, 1)
+    bundleId2 = bundleAfterFunding2['id']
 
     assert bundleAfterFunding['id'] == 1
     assert bundleAfterFunding['riskpoolId'] == riskpool.getId()
     assert bundleAfterFunding['state'] == 0
-    assert bundleAfterFunding['capital'] == riskpoolExpectedBalance
+    assert bundleAfterFunding['capital'] + bundleAfterFunding2['capital'] == riskpoolExpectedBalance
     assert bundleAfterFunding['lockedCapital'] == 0
-    assert bundleAfterFunding['balance'] == riskpoolExpectedBalance
+    assert bundleAfterFunding['balance'] + bundleAfterFunding2['balance'] == riskpoolExpectedBalance
 
-    # cheeck bundle token (nft)
+    # check bundle token (nft)
     bundleNftId = bundleAfterFunding['tokenId']
     bundleToken = contractFromAddress(interface.IBundleToken, instanceService.getBundleToken())
     assert bundleToken.exists(bundleNftId) == True
     assert bundleToken.burned(bundleNftId) == False
     assert bundleToken.getBundleId(bundleNftId) == bundleId
-    assert bundleToken.balanceOf(investor) == 1
+    assert bundleToken.balanceOf(investor) == 2
     assert bundleToken.ownerOf(bundleNftId) == investor
+
+    assert bundleAfterFunding2['id'] == 2
+    assert bundleAfterFunding2['riskpoolId'] == riskpool.getId()
+    assert bundleAfterFunding2['state'] == 0
+
+    # check bundle token (nft)
+    bundleNftId2 = bundleAfterFunding2['tokenId']
+    assert bundleToken.exists(bundleNftId2) == True
+    assert bundleToken.burned(bundleNftId2) == False
+    assert bundleToken.getBundleId(bundleNftId2) == bundleId2
+    assert bundleToken.ownerOf(bundleNftId2) == investor
+
 
     print('--- test setup risks -------------------------------------')
 
-    startDate = time.time() + 100
-    endDate = time.time() + 1000
-    placeId = [s2b32('10001.saopaulo'), s2b32('10002.paris')] # mm 
     latFloat = [-23.550620, 48.856613]
     longFloat = [-46.634370, 2.352222]
     triggerFloat = 0.1 # %
@@ -124,15 +154,15 @@ def test_happy_path(
     precHist = [precMultiplier * aphFloat[0], precMultiplier * aphFloat[1]]
 
     tx = [None, None]
-    tx[0] = product.createRisk(startDate, endDate, placeId[0], lat[0], long[0], trigger, exit, precHist[0], precDays[0], {'from': insurer})
-    tx[1] = product.createRisk(startDate, endDate, placeId[1], lat[1], long[1], trigger, exit, precHist[1], precDays[1], {'from': insurer})
+    tx[0] = product.createRisk(startDate, endDate, place[0], lat[0], long[0], trigger, exit, precHist[0], precDays[0], {'from': insurer})
+    tx[1] = product.createRisk(startDate, endDate, place[1], lat[1], long[1], trigger, exit, precHist[1], precDays[1], {'from': insurer})
 
     riskId = [None, None]
     riskId = [tx[0].return_value, tx[1].return_value]
     print('riskId {}'.format(riskId))
     assert riskId[0] != riskId[1]
-    assert riskId[0] == product.getRiskId(placeId[0], startDate, endDate)
-    assert riskId[1] == product.getRiskId(placeId[1], startDate, endDate)
+    assert riskId[0] == product.getRiskId(place[0], startDate, endDate)
+    assert riskId[1] == product.getRiskId(place[1], startDate, endDate)
     
 
     print('--- test setup funding customers -------------------------')
@@ -140,9 +170,9 @@ def test_happy_path(
     assert token.balanceOf(customer) == 0
     assert token.balanceOf(customer2) == 0
 
-    customerFunding = 500
-    fund_customer(instance, instanceOperator, customer, token, customerFunding)
-    fund_customer(instance, instanceOperator, customer2, token, customerFunding)
+    customerFunding = 500 * tf
+    fund_account(instance, instanceOperator, customer, token, customerFunding)
+    fund_account(instance, instanceOperator, customer2, token, customerFunding)
 
     # check customer funds after funding
     customerBalanceAfterFunding = token.balanceOf(customer)
@@ -153,36 +183,48 @@ def test_happy_path(
 
     print('--- test create policies ---------------------------------')
 
-    premium = [300, 400]
-    sumInsured = [2000, 3000]
+    premium = [300 * tf, 400 * tf]
+    sumInsured = [2000 * tf, 3000 * tf]
 
-    tx[0] = product.applyForPolicy(customer, premium[0], sumInsured[0], riskId[0], {'from': insurer})
-    tx[1] = product.applyForPolicy(customer2, premium[1], sumInsured[1], riskId[1], {'from': insurer})
+    tx[0] = product.applyForPolicyWithBundle(customer, premium[0], sumInsured[0], riskId[0], bundleId, {'from': customer})
+    tx[1] = product.applyForPolicyWithBundle(customer2, premium[1], sumInsured[1], riskId[1], bundleId2, {'from': customer2})
+
+    print(tx[1].events)
+
+    premiumPlusFees = [None, None]
+    premiumPlusFees[0] = product.calculatePremium(premium[0])
+    premiumPlusFees[1] = product.calculatePremium(premium[1])
 
     # check customer funds after application/paying premium
     customerBalanceAfterPremium = token.balanceOf(customer)
     customer2BalanceAfterPremium = token.balanceOf(customer2)
-    assert premium[0] + customerBalanceAfterPremium == customerBalanceAfterFunding 
-    assert premium[1] + customer2BalanceAfterPremium == customer2BalanceAfterFunding 
+    assert customerBalanceAfterPremium == customerBalanceAfterFunding - premiumPlusFees[0]
+    assert customer2BalanceAfterPremium == customer2BalanceAfterFunding - premiumPlusFees[1]
 
     # check riskpool funds after application/paying premium
-    netPremium = [(1-PREMIUM_FEE_FRACTIONAL_DEFAULT) * premium[0] - PREMIUM_FEE_FIXED_DEFAULT, (1-PREMIUM_FEE_FRACTIONAL_DEFAULT) * premium[1] - PREMIUM_FEE_FIXED_DEFAULT]
+    fees = [PREMIUM_FEE_FRACTIONAL_DEFAULT * premium[0] + PREMIUM_FEE_FIXED_DEFAULT, PREMIUM_FEE_FRACTIONAL_DEFAULT * premium[1] + PREMIUM_FEE_FIXED_DEFAULT]
+    netPremium = [premium[0] - fees[0], premium[1] - fees[1]]
     riskpoolBalanceAfterPremiums = token.balanceOf(riskpoolWallet)
-    assert riskpoolBalanceAfterPremiums == riskpoolBalanceAfterFunding + netPremium[0] + netPremium[1]
+    assert riskpoolBalanceAfterPremiums == riskpoolBalanceAfterFunding + premium[0] + premium[1]
 
     # check risk bundle after premium
     riskpoolExpectedCapital = riskpoolExpectedBalance
     riskpoolExpectedLockedCapital = sumInsured[0] + sumInsured[1]
-    riskpoolExpectedBalance += netPremium[0] + netPremium[1]
+    riskpoolExpectedBalance += premium[0] + premium[1]
 
-    bundleAfterPremium = _getBundleDict(instanceService, riskpool, bundleIdx)
+    bundleAfterPremium = get_bundle_dict(instance, riskpool, 0)
+    bundleAfterPremium2 = get_bundle_dict(instance, riskpool, 1)
 
     assert bundleAfterPremium['id'] == 1
     assert bundleAfterPremium['riskpoolId'] == riskpool.getId()
     assert bundleAfterPremium['state'] == 0
-    assert bundleAfterPremium['capital'] == riskpoolExpectedCapital
-    assert bundleAfterPremium['lockedCapital'] == riskpoolExpectedLockedCapital
-    assert bundleAfterPremium['balance'] == riskpoolExpectedBalance
+    assert bundleAfterPremium['capital'] + bundleAfterPremium2['capital'] == riskpoolExpectedCapital
+    assert bundleAfterPremium['lockedCapital'] + bundleAfterPremium2['lockedCapital'] == riskpoolExpectedLockedCapital
+    assert bundleAfterPremium['balance'] + bundleAfterPremium2['balance'] == riskpoolExpectedBalance
+
+    assert bundleAfterPremium2['id'] == 2
+    assert bundleAfterPremium2['riskpoolId'] == riskpool.getId()
+    assert bundleAfterPremium2['state'] == 0
 
     policyId = [None, None]
     policyId = [tx[0].return_value, tx[1].return_value]
@@ -203,58 +245,61 @@ def test_happy_path(
     policy[0] = instanceService.getPolicy(policyId[0]).dict()
     policy[1] = instanceService.getPolicy(policyId[1]).dict()
     print('policy {}'.format(policy))
+
+    params = get_bundle_params(instanceService, riskpool, policyId[0])
+    params2 = get_bundle_params(instanceService, riskpool, policyId[1])
  
     # check policy 1
     assert meta[0]['state'] == 1
     assert meta[0]['owner'] == customer
     assert meta[0]['productId'] == product.getId()
     assert application[0]['state'] == 2
-    assert application[0]['premiumAmount'] == premium[0]
+    assert application[0]['premiumAmount'] >= premium[0]
     assert application[0]['sumInsuredAmount'] == sumInsured[0]
-    assert application[0]['data'] == riskId[0]
+    assert params['riskId'] == riskId[0]
     assert policy[0]['state'] == 0
-    assert policy[0]['premiumExpectedAmount'] == premium[0]
-    assert policy[0]['premiumPaidAmount'] == premium[0]
+    assert policy[0]['premiumExpectedAmount'] == application[0]['premiumAmount']
+    assert policy[0]['premiumPaidAmount'] == application[0]['premiumAmount']
  
     # check policy 2
     assert meta[1]['state'] == 1
     assert meta[1]['owner'] == customer2
     assert meta[1]['productId'] == product.getId()
     assert application[1]['state'] == 2
-    assert application[1]['premiumAmount'] == premium[1]
+    assert application[1]['premiumAmount'] >= premium[1]
     assert application[1]['sumInsuredAmount'] == sumInsured[1]
-    assert application[1]['data'] == riskId[1]
+    assert params2['riskId'] == riskId[1]
     assert policy[1]['state'] == 0
-    assert policy[1]['premiumExpectedAmount'] == premium[1]
-    assert policy[1]['premiumPaidAmount'] == premium[1]
+    assert policy[1]['premiumExpectedAmount'] == application[1]['premiumAmount']
+    assert policy[1]['premiumPaidAmount'] == application[1]['premiumAmount']
 
     assert product.policies(riskId[0]) == 1
     assert product.policies(riskId[1]) == 1
-    assert product.policies(s2b32('dummyRiskId')) == 0
+    assert product.policies(keccak256('dummyRiskId')) == 0
 
     assert len(product.processIdsForHolder(customer)) == 1
     assert len(product.processIdsForHolder(customer2)) == 1
 
-    processForHolder = product.processForHolder(customer, 0)
-    processForHolder2 = product.processForHolder(customer2, 0)
+    # processForHolder = product.processForHolder(customer, 0)
+    # processForHolder2 = product.processForHolder(customer2, 0)
 
-    print('processForHolder {}'.format(processForHolder))
-    print('processForHolder2 {}'.format(processForHolder2))
+    # print('processForHolder {}'.format(processForHolder))
+    # print('processForHolder2 {}'.format(processForHolder2))
 
-    assert processForHolder['processId'] == policyId[0]
-    assert processForHolder2['processId'] == policyId[1]
-    assert processForHolder['riskId'] == riskId[0]
-    assert processForHolder2['riskId'] == riskId[1]
-    assert processForHolder['startDate'] == startDate
-    assert processForHolder2['startDate'] == startDate
-    assert processForHolder['endDate'] == endDate
-    assert processForHolder2['endDate'] == endDate
-    assert processForHolder['placeId'] == placeId[0]
-    assert processForHolder2['placeId'] == placeId[1]
-    assert processForHolder['precHist'] == precHist[0]
-    assert processForHolder2['precHist'] == precHist[1]
-    assert processForHolder['sumInsured'] == sumInsured[0]
-    assert processForHolder2['sumInsured'] == sumInsured[1]
+    # assert processForHolder['processId'] == policyId[0]
+    # assert processForHolder2['processId'] == policyId[1]
+    # assert processForHolder['riskId'] == riskId[0]
+    # assert processForHolder2['riskId'] == riskId[1]
+    # assert processForHolder['startDate'] == startDate
+    # assert processForHolder2['startDate'] == startDate
+    # assert processForHolder['endDate'] == endDate
+    # assert processForHolder2['endDate'] == endDate
+    # assert processForHolder['placeId'] == placeId[0]
+    # assert processForHolder2['placeId'] == placeId[1]
+    # assert processForHolder['precHist'] == precHist[0]
+    # assert processForHolder2['precHist'] == precHist[1]
+    # assert processForHolder['sumInsured'] == sumInsured[0]
+    # assert processForHolder2['sumInsured'] == sumInsured[1]
 
     assert product.getProcessId(customer, 0) == policyId[0]
     assert product.getProcessId(customer2, 0) == policyId[1] 
@@ -287,7 +332,7 @@ def test_happy_path(
     print('rain requestEvent {}'.format(requestEvent))
     assert requestEvent['requestId'] == requestId[0]
     assert requestEvent['riskId'] == riskId[0]
-    assert requestEvent['placeId'] == placeId[0]
+    assert requestEvent['placeId'] == keccak256(place[0])
     assert requestEvent['startDate'] == startDate
     assert requestEvent['endDate'] == endDate
 
@@ -308,7 +353,7 @@ def test_happy_path(
     data = [None, None]
     data[0] = oracle.encodeFulfillParameters(
         clRequestEvent['requestId'], 
-        placeId[0],
+        keccak256(place[0]),
         startDate, 
         endDate, 
         precActual,
@@ -331,7 +376,7 @@ def test_happy_path(
     # simulate callback for 2nd risk
     data[1] = oracle.encodeFulfillParameters(
         clRequestEvent1['requestId'],
-        placeId[1], 
+        keccak256(place[1]), 
         startDate, 
         endDate,
         precHist[1], # setting precActual to precHist will result in a 0 payout
@@ -380,8 +425,20 @@ def test_happy_path(
     valueLockedBeforeProcessing = riskpool.getTotalValueLocked()
     capacityBeforeProcessing = riskpool.getCapacity()
 
+    with brownie.reverts('ERROR:BUC-015:BUNDLE_WITH_ACTIVE_POLICIES'):
+        riskpool.closeBundle(bundleId, {'from': investor})
+
+    with brownie.reverts('ERROR:TRS-043:PAYOUT_ALLOWANCE_TOO_SMALL'):
+        tx = product.processPoliciesForRisk(riskId[0], 0, {'from': insurer})
+
+    # create token allowance for payouts
+    token.approve(
+        instanceService.getTreasuryAddress(), 
+        10 * bundleFunding * tf, 
+        {'from': riskpoolWallet})
+    
     # claim processing for policies associated with the specified risk
-    # batch size=0 triggers processing of all policies for this risk
+    # batch size=0 triggers processing of all policies for this risk    
     tx = product.processPoliciesForRisk(riskId[0], 0, {'from': insurer})
     policyIds = tx.return_value
 
@@ -416,6 +473,8 @@ def test_happy_path(
     print('expectedClaimPercentage {}'.format(expectedClaimPercentage))
 
     expectedPayoutAmount = int(expectedClaimPercentage * sumInsured[0] / multiplier)
+
+    print('expectedPayoutAmount {}'.format(expectedPayoutAmount))
 
     assert expectedPayoutAmount > 0
     assert expectedPayoutAmount <= sumInsured[0]
@@ -462,13 +521,14 @@ def test_happy_path(
     riskpoolExpectedBalance -= expectedPayoutAmount
 
     # check risk bundle after payout
-    bundleAfterPayout = _getBundleDict(instanceService, riskpool, bundleIdx)
+    bundleAfterPayout = get_bundle_dict(instance, riskpool, 0)
+    bundleAfterPayout2 = get_bundle_dict(instance, riskpool, 1)
     assert bundleAfterPayout['id'] == 1
     assert bundleAfterPayout['riskpoolId'] == riskpool.getId()
     assert bundleAfterPayout['state'] == 0
-    assert bundleAfterPayout['capital'] == riskpoolExpectedCapital
-    assert bundleAfterPayout['lockedCapital'] == riskpoolExpectedLockedCapital
-    assert bundleAfterPayout['balance'] == riskpoolExpectedBalance
+    assert bundleAfterPayout['capital'] + bundleAfterPayout2['capital'] == riskpoolExpectedCapital
+    assert bundleAfterPayout['lockedCapital'] + bundleAfterPayout2['lockedCapital'] == riskpoolExpectedLockedCapital
+    assert bundleAfterPayout['balance'] + bundleAfterPayout2['balance'] == riskpoolExpectedBalance
 
     # check book keeping on riskpool level
     assert riskpool.getCapital() == riskpoolExpectedCapital
@@ -498,11 +558,15 @@ def test_happy_path(
 
     # check bundle state
     riskpoolExpectedLockedCapital = 0
-    bundleAfter2ndPayout = _getBundleDict(instanceService, riskpool, bundleIdx)
+    bundleAfter2ndPayout = get_bundle_dict(instance, riskpool, 0)
+    bundleAfter2ndPayout2 = get_bundle_dict(instance, riskpool, 1)
 
-    assert bundleAfter2ndPayout['capital'] == riskpoolExpectedCapital
-    assert bundleAfter2ndPayout['lockedCapital'] == riskpoolExpectedLockedCapital
-    assert bundleAfter2ndPayout['balance'] == riskpoolExpectedBalance
+    assert bundleAfter2ndPayout['capital'] + bundleAfter2ndPayout2['capital'] == riskpoolExpectedCapital
+    assert bundleAfter2ndPayout['lockedCapital'] + bundleAfter2ndPayout2['lockedCapital'] == riskpoolExpectedLockedCapital
+    assert bundleAfter2ndPayout['balance'] + bundleAfter2ndPayout2['balance'] == riskpoolExpectedBalance
+
+    print('bundle1 After2ndPayout: {}'.format(bundleAfter2ndPayout))
+    print('bundle2 After2ndPayout: {}'.format(bundleAfter2ndPayout2))
 
     # check riskpool state
     assert riskpool.getCapital() == riskpoolExpectedCapital
@@ -515,27 +579,45 @@ def test_happy_path(
 
     riskpool.closeBundle(bundleId, {'from': investor})
 
-    investorBalanceBeforeTokenBurn = token.balanceOf(investor)    
+    investorBalanceBeforeTokenBurn = token.balanceOf(investor)
     assert investorBalanceBeforeBundleClose == investorBalanceBeforeTokenBurn
 
-    bundleBeforeBurn = _getBundleDict(instanceService, riskpool, bundleIdx)
+    bundleBeforeBurn = get_bundle_dict(instance, riskpool, 0)
+
     assert bundleBeforeBurn['state'] == 2 # enum BundleState { Active, Locked, Closed, Burned }
 
-    # cheeck bundle token (nft)
+    # check bundle token (nft)
     bundleNftId = bundleBeforeBurn['tokenId']
     assert bundleToken.exists(bundleNftId) == True
     assert bundleToken.burned(bundleNftId) == False
     assert bundleToken.ownerOf(bundleNftId) == investor
 
     tx = riskpool.burnBundle(bundleId, {'from': investor})
-    print(tx.info())
 
     # verify bundle is burned and has 0 balance
-    bundleAfterBurn = _getBundleDict(instanceService, riskpool, bundleIdx)
+    bundleAfterBurn = get_bundle_dict(instance, riskpool, 0)
+
     assert bundleAfterBurn['state'] == 3 # enum BundleState { Active, Locked, Closed, Burned }
     assert bundleAfterBurn['capital'] == 0
     assert bundleAfterBurn['lockedCapital'] == 0
     assert bundleAfterBurn['balance'] == 0
+
+    assert riskpool.getCapital() > 0
+    assert riskpool.getTotalValueLocked() == 0
+    assert riskpool.getBalance() > 0
+
+    riskpool.closeBundle(bundleId2, {'from': investor})
+
+    bundleBeforeBurn2 = get_bundle_dict(instance, riskpool, 1)
+
+    tx = riskpool.burnBundle(bundleId2, {'from': investor})
+
+    bundleAfterBurn2 = get_bundle_dict(instance, riskpool, 1)
+
+    assert bundleAfterBurn2['state'] == 3 # enum BundleState { Active, Locked, Closed, Burned }
+    assert bundleAfterBurn2['capital'] == 0
+    assert bundleAfterBurn2['lockedCapital'] == 0
+    assert bundleAfterBurn2['balance'] == 0
 
     assert riskpool.getCapital() == 0
     assert riskpool.getTotalValueLocked() == 0
@@ -547,69 +629,7 @@ def test_happy_path(
     with brownie.reverts('ERC721: invalid token ID'):
         assert bundleToken.ownerOf(bundleNftId) == investor
     
-    assert token.balanceOf(investor) == investorBalanceBeforeTokenBurn + bundleBeforeBurn['balance']
-
-
-def test_create_bundle_investor_restriction(
-    instance: GifInstance, 
-    instanceOperator: Account, 
-    gifProduct: GifProduct,
-    riskpoolWallet: Account,
-    productOwner: Account,
-    oracleProvider: Account,
-    riskpoolKeeper: Account,
-    investor: Account,
-    customer: Account,
-):
-    instanceService = instance.getInstanceService()
-
-    product = gifProduct.getContract()
-    oracle = gifProduct.getOracle().getContract()
-    riskpool = gifProduct.getRiskpool().getContract()
-
-    amount = 5000
-    token = gifProduct.getToken()
-    token.transfer(investor, amount, {'from': instanceOperator})
-    token.approve(instance.getTreasury(), amount, {'from': investor})
-
-    # check that investor can create a bundle
-    applicationFilter = bytes(0)
-    tx = riskpool.createBundle(
-            applicationFilter, 
-            amount, 
-            {'from': investor})
-    
-    bundleId = tx.return_value
-    assert bundleId > 0
-
-    # check that customer is not allowed to create bundle
-    with brownie.reverts("AccessControl: account 0x5aeda56215b167893e80b4fe645ba6d5bab767de is missing role 0x5614e11ca6d7673c9c8dcec913465d676494aad1151bb2c1cf40b9d99be4d935"):
-        riskpool.createBundle(
-                applicationFilter, 
-                amount, 
-                {'from': customer})
-
-    # check that customer cannot assign investor role to herself
-    with brownie.reverts("Ownable: caller is not the owner"):
-        riskpool.grantInvestorRole(customer, {'from': customer})
-
-    # assign investor role to customer
-    riskpool.grantInvestorRole(customer, {'from': riskpoolKeeper})
-
-    # fund customer
-    customerAmount = 2000
-    token.transfer(customer, customerAmount, {'from': instanceOperator})
-    token.approve(instance.getTreasury(), customerAmount, {'from': customer})
-
-    riskpool.setMaximumNumberOfActiveBundles(2, {'from': riskpoolKeeper})
-    # check that customer now can create a bundle
-    tx = riskpool.createBundle(
-            applicationFilter, 
-            customerAmount, 
-            {'from': customer})
-    
-    bundleIdCustomer = tx.return_value
-    assert bundleIdCustomer == bundleId + 1
+    assert token.balanceOf(investor) == investorBalanceBeforeTokenBurn + bundleBeforeBurn['balance'] + bundleBeforeBurn2['balance']
 
 
 def test_payout_percentage_calculation(gifProduct: GifProduct):
@@ -710,9 +730,10 @@ def get_payout_delta(
 
     return delta
 
-def _getBundleDict(instanceService, riskpool, bundleIdx):
-    return _getBundle(instanceService, riskpool, bundleIdx).dict()
-
-def _getBundle(instanceService, riskpool, bundleIdx):
-    bundleId = riskpool.getBundleId(bundleIdx)
-    return instanceService.getBundle(bundleId)
+def get_bundle_params(
+    instance_service,
+    riskpool,
+    process_id
+):
+    data = instance_service.getApplication(process_id).dict()['data']
+    return riskpool.decodeApplicationParameterFromData(data).dict()

@@ -11,7 +11,9 @@ from brownie import (
     RainProduct,
     RainOracle,
     RainOracleCLFunctions,
-    RainRiskpool
+    RainRiskpool,
+    MockRegistryStaking,
+    DIP
 )
 
 from brownie.network import accounts
@@ -33,8 +35,9 @@ from scripts.const import (
     CUSTOMER2,
     REGISTRY_OWNER,
     STAKER,
+    STAKER2,
     OUTSIDER,
-    GIF_ACTOR
+    GIF_ACTOR,
 )
 
 from scripts.instance import (
@@ -147,6 +150,26 @@ def customer2(accounts) -> Account:
 def theOutsider(accounts) -> Account:
     return get_filled_account(accounts, GIF_ACTOR[OUTSIDER])
 
+@pytest.fixture(scope="module")
+def staker(accounts) -> Account:
+    return get_filled_account(accounts, GIF_ACTOR[STAKER])
+
+@pytest.fixture(scope="module")
+def staker2(accounts) -> Account:
+    return get_filled_account(accounts, GIF_ACTOR[STAKER2])
+
+@pytest.fixture(scope="module")
+def stakerWithDips(staker, instanceOperator, dip) -> Account:
+    dips = 1000000 * 10**dip.decimals()
+    dip.transfer(staker, dips, {'from': instanceOperator})
+    return staker
+
+@pytest.fixture(scope="module")
+def staker2WithDips(staker2, instanceOperator, dip) -> Account:
+    dips = 1000000 * 10**dip.decimals()
+    dip.transfer(staker2, dips, {'from': instanceOperator})
+    return staker2
+
 #=== gif instance fixtures ====================================================#
 
 @pytest.fixture(scope="module")
@@ -162,6 +185,9 @@ def instanceService(instance): return instance.getInstanceService()
 
 @pytest.fixture(scope="module")
 def token(instanceOperator) -> CONTRACT_CLASS_TOKEN: return CONTRACT_CLASS_TOKEN.deploy({'from': instanceOperator})
+
+@pytest.fixture(scope="module")
+def dip(instanceOperator) -> DIP: return DIP.deploy({'from': instanceOperator})
 
 #=== rain contracts fixtures ========================================#
 

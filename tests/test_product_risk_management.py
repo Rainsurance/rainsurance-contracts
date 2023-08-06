@@ -15,12 +15,17 @@ from scripts.product import (
 )
 
 from scripts.setup import (
-    fund_riskpool,
-    fund_customer,
+    ONE_DAY_DURATION,
+    create_risk,
+    create_bundle,
+    fund_account,
 )
 
 from scripts.instance import GifInstance
-from scripts.util import s2b32, contractFromAddress
+from scripts.util import (
+    s2b32,
+    keccak256,
+)
 
 # enforce function isolation for tests below
 @pytest.fixture(autouse=True)
@@ -39,31 +44,48 @@ def test_risk_creation_happy_case(
     coordMultiplier = product.getCoordinatesMultiplier()
     precMultiplier = product.getPrecipitationMultiplier()
 
-    startDate = time.time() + 100
-    endDate = time.time() + 1000
-    placeId = s2b32('10001.saopaulo') # mm 
+    place = '10001.saopaulo'
     lat = -23.550620
     long = -46.634370
     trigger = 0.1 # %
     exit = 1.0 # %
     precHist = 5.0 # mm
 
-    riskId = create_risk(product, insurer, startDate, endDate, placeId, lat, long, trigger, exit, precHist)
+    # risk duration is too low
+    startDate = time.time() + 100
+    endDate = startDate + 1000
+
+    with brownie.reverts('ERROR:RAIN-046:RISK_DURATION_MIN_INVALID'):
+        riskId = create_risk(product, insurer, startDate, endDate, place, lat, long, trigger, exit, precHist)
+        risk = product.getRisk(riskId)
+
+    # risk duration is too high
+    endDate = startDate + 100 * ONE_DAY_DURATION
+
+    with brownie.reverts('ERROR:RAIN-047:RISK_DURATION_MAX_INVALID'):
+        riskId = create_risk(product, insurer, startDate, endDate, place, lat, long, trigger, exit, precHist)
+        risk = product.getRisk(riskId)
+
+    # risk duration is fine
+    endDate = startDate + 2 * ONE_DAY_DURATION
+
+    riskId = create_risk(product, insurer, startDate, endDate, place, lat, long, trigger, exit, precHist)
     risk = product.getRisk(riskId)
 
     assert risk[0] == riskId
     assert risk[1] == startDate
     assert risk[2] == endDate
-    assert risk[3] == placeId
-    assert risk[4] == coordMultiplier * lat
-    assert risk[5] == coordMultiplier * long
-    assert risk[6] == multiplier * trigger
-    assert risk[7] == multiplier * exit
-    assert risk[8] == precMultiplier * precHist
+    assert risk[3] == keccak256(place)
+    assert risk[4] == place
+    assert risk[5] == coordMultiplier * lat
+    assert risk[6] == coordMultiplier * long
+    assert risk[7] == multiplier * trigger
+    assert risk[8] == multiplier * exit
+    assert risk[9] == precMultiplier * precHist
 
     # attempt to modify risk
     with brownie.reverts('ERROR:RAIN-001:RISK_ALREADY_EXISTS'):
-        create_risk(product, insurer, startDate, endDate, placeId, lat, long, trigger, exit, precHist * 0.9)
+        create_risk(product, insurer, startDate, endDate, place, lat, long, trigger, exit, precHist * 0.9)
 
 
 def test_risk_creation_validation(
@@ -74,7 +96,7 @@ def test_risk_creation_validation(
     product = gifProduct.getContract()
     
     startDate = time.time() + 100
-    endDate = time.time() + 1000
+    endDate = startDate + 2 * ONE_DAY_DURATION
     lat = -23.550620
     long = -46.634370
     trigger = 0.2 # %
@@ -151,15 +173,15 @@ def test_risk_adjustment_happy_case(
     precMultiplier = product.getPrecipitationMultiplier()
 
     startDate = time.time() + 100
-    endDate = time.time() + 1000
-    placeId = s2b32('10001.saopaulo') # mm 
+    endDate = startDate + 2 * ONE_DAY_DURATION
+    place = '10001.saopaulo'
     lat = -23.550620
     long = -46.634370
     trigger = 0.1 # %
     exit = 1.0 # %
     precHist = 5.0 # mm
 
-    riskId = create_risk(product, insurer, startDate, endDate, placeId, lat, long, trigger, exit, precHist)
+    riskId = create_risk(product, insurer, startDate, endDate, place, lat, long, trigger, exit, precHist)
 
     trigger_new = 0.2 * multiplier
     exit_new = 0.75 * multiplier
@@ -173,13 +195,14 @@ def test_risk_adjustment_happy_case(
     assert risk[0] == riskId
     assert risk[1] == startDate
     assert risk[2] == endDate
-    assert risk[3] == placeId
-    assert risk[4] == coordMultiplier * lat
-    assert risk[5] == coordMultiplier * long
-    assert risk[6] == trigger_new
-    assert risk[7] == exit_new
-    assert risk[8] == aph_new
-    assert risk[9] == days_new
+    assert risk[3] == keccak256(place)
+    assert risk[4] == place
+    assert risk[5] == coordMultiplier * lat
+    assert risk[6] == coordMultiplier * long
+    assert risk[7] == trigger_new
+    assert risk[8] == exit_new
+    assert risk[9] == aph_new
+    assert risk[10] == days_new
 
 def test_risk_adjustment_with_policy(
     instance: GifInstance, 
@@ -198,37 +221,30 @@ def test_risk_adjustment_with_policy(
     riskpool = gifProduct.getRiskpool().getContract()
 
     token = gifProduct.getToken()
-    riskpoolFunding = 200000
-    fund_riskpool(
+
+    tf = 10 ** token.decimals()
+
+    bundleFunding = 200_000
+
+    bundleId = create_bundle(
         instance, 
         instanceOperator, 
-        riskpoolWallet, 
-        riskpool, 
         investor, 
-        token, 
-        riskpoolFunding)
+        riskpool,
+        funding=bundleFunding)
 
-    customerFunding = 500
-    fund_customer(instance, instanceOperator, customer, token, customerFunding)
+    customerFunding = 500 * tf
+    fund_account(instance, instanceOperator, customer, token, customerFunding)
 
     multiplier = product.getPercentageMultiplier()
     coordMultiplier = product.getCoordinatesMultiplier()
     precMultiplier = product.getPrecipitationMultiplier()
 
-    startDate = time.time() + 100
-    endDate = time.time() + 1000
-    placeId = s2b32('10001.saopaulo') # mm 
-    lat = -23.550620
-    long = -46.634370
-    trigger = 0.1 # %
-    exit = 1.0 # %
-    precHist = 2.0 # mm
+    riskId = create_risk(product, insurer)
 
-    riskId = create_risk(product, insurer, startDate, endDate, placeId, lat, long, trigger, exit, precHist)
-
-    premium = 300
-    sumInsured = 2000
-    tx = product.applyForPolicy(customer, premium, sumInsured, riskId, {'from': insurer})
+    premium = 300 * tf
+    sumInsured = 2000 * tf
+    tx = product.applyForPolicyWithBundle(customer, premium, sumInsured, riskId, bundleId, {'from': customer})
     processId = tx.return_value
 
     assert product.policies(riskId) == 1
@@ -241,23 +257,3 @@ def test_risk_adjustment_with_policy(
 
     with brownie.reverts('ERROR:RAIN-003:RISK_WITH_POLICIES_NOT_ADJUSTABLE'):
         product.adjustRisk(riskId, trigger_new, exit_new, aph_new, days_new, {'from': insurer})
-
-
-def create_risk(product, insurer, startDate, endDate, placeId, lat, long, trigger, exit, precHist, precDays = 2):
-    multiplier = product.getPercentageMultiplier()
-    coordMultiplier = product.getCoordinatesMultiplier()
-    precMultiplier = product.getPrecipitationMultiplier()
-    tx = product.createRisk(
-        startDate,
-        endDate,
-        placeId,
-        lat * coordMultiplier,
-        long * coordMultiplier,
-        trigger * multiplier,
-        exit * multiplier,
-        precHist * precMultiplier,
-        precDays,
-        {'from': insurer }
-    )
-
-    return tx.return_value

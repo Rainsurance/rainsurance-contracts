@@ -7,6 +7,7 @@ from brownie.network.account import Account
 from brownie import (
     interface,
     RainProduct,
+    history
 )
 
 from scripts.product import (
@@ -14,8 +15,9 @@ from scripts.product import (
 )
 
 from scripts.setup import (
-    fund_riskpool,
-    fund_customer,
+    create_bundle,
+    create_risk,
+    apply_for_policy_with_bundle,
 )
 
 from scripts.instance import GifInstance
@@ -45,50 +47,56 @@ def test_trigger_and_cancel_oracle_requests(
     oracle = gifProduct.getOracle().getContract()
     clOperator = gifProduct.getOracle().getClOperator()
     riskpool = gifProduct.getRiskpool().getContract()
-
     token = gifProduct.getToken()
-    riskpoolFunding = 200000
-    fund_riskpool(
+
+    bundleFunding = 200_000
+
+    place = s2b32('10001.saopaulo')
+    startDate = time.time() + 100
+    endDate = time.time() + 2 * 24 * 3600
+
+    bundleId = create_bundle(
         instance, 
         instanceOperator, 
-        riskpoolWallet, 
-        riskpool, 
         investor, 
-        token, 
-        riskpoolFunding)
-    
-    startDate = time.time() + 100
-    endDate = time.time() + 1000
-    placeId = s2b32('10001.saopaulo')
-    latFloat = -23.550620
-    longFloat = -46.634370
-    triggerFloat = 0.1 # %
-    exitFloat = 1.0 # %
-    aphFloat = 3.0 # mm
-    precDays = 2
+        riskpool,
+        funding=bundleFunding,
+        place=place)
 
-    multiplier = product.getPercentageMultiplier()
-    coordMultiplier = product.getCoordinatesMultiplier()
-    precMultiplier = product.getPrecipitationMultiplier()
-
-    trigger = multiplier * triggerFloat
-    exit = multiplier * exitFloat
-    lat = coordMultiplier * latFloat
-    long = coordMultiplier * longFloat
-    precHist = precMultiplier * aphFloat
-
-    tx = product.createRisk(startDate, endDate, placeId, lat, long, trigger, exit, precHist, precDays, {'from': insurer})
-    riskId = tx.return_value
-
-    customerFunding = 500
-    fund_customer(instance, instanceOperator, customer, token, customerFunding)
+    riskId = create_risk(
+        product,
+        insurer,
+        place=place,
+        startDate=startDate,
+        endDate=endDate)
+    print('riskId {}'.format(riskId))
 
     premium = 300
     sumInsured = 2000
-    tx = product.applyForPolicy(customer, premium, sumInsured, riskId, {'from': insurer})
-    processId = tx.return_value
+    processId = apply_for_policy_with_bundle(
+        instance,
+        instanceOperator,
+        customer,
+        product,
+        bundleId,
+        riskId,
+        None,
+        sumInsured,
+        premium)
+    print('processId {}'.format(processId))
 
-    print('--- step trigger oracle (call chainlin node) -------------')
+    # tx = history[-1]
+    # print('tx.events {}'.format(tx.events))
+
+    # metadata = instanceService.getMetadata(processId).dict()
+    # application = instanceService.getApplication(processId).dict()
+    # policy = instanceService.getPolicy(processId).dict()
+
+    # print('metadata {}'.format(metadata))
+    # print('application {}'.format(application))
+    # print('policy {}'.format(policy))
+
+    print('--- step trigger oracle (call chainlink node) -------------')
 
     tx = product.triggerOracle(processId, "", "", {'from': insurer})
     requestId = tx.return_value
@@ -109,7 +117,7 @@ def test_trigger_and_cancel_oracle_requests(
 
     data = oracle.encodeFulfillParameters(
         clRequestEvent['requestId'], 
-        placeId,
+        place,
         startDate, 
         endDate, 
         precActual
@@ -144,7 +152,7 @@ def test_trigger_and_cancel_oracle_requests(
 
     data2 = oracle.encodeFulfillParameters(
         clRequestEvent2['requestId'],
-        placeId,
+        place,
         startDate, 
         endDate, 
         precActual
@@ -197,48 +205,43 @@ def test_oracle_responds_with_invalid_aaay(
     oracle = gifProduct.getOracle().getContract()
     clOperator = gifProduct.getOracle().getClOperator()
     riskpool = gifProduct.getRiskpool().getContract()
-
     token = gifProduct.getToken()
-    riskpoolFunding = 200000
-    fund_riskpool(
+
+    bundleFunding = 200_000
+
+    place = s2b32('10001.saopaulo')
+    startDate = time.time() + 100
+    endDate = time.time() + 2 * 24 * 3600
+
+    bundleId = create_bundle(
         instance, 
         instanceOperator, 
-        riskpoolWallet, 
-        riskpool, 
         investor, 
-        token, 
-        riskpoolFunding)
-    
-    startDate = time.time() + 100
-    endDate = time.time() + 1000
-    placeId = s2b32('10001.saopaulo')
-    latFloat = -23.550620
-    longFloat = -46.634370
-    triggerFloat = 0.1 # %
-    exitFloat = 1.0 # %
-    aphFloat = 3.0 # mm
-    precDays = 2
+        riskpool,
+        funding=bundleFunding,
+        place=place)
 
-    multiplier = product.getPercentageMultiplier()
-    coordMultiplier = product.getCoordinatesMultiplier()
-    precMultiplier = product.getPrecipitationMultiplier()
-
-    trigger = multiplier * triggerFloat
-    exit = multiplier * exitFloat
-    lat = coordMultiplier * latFloat
-    long = coordMultiplier * longFloat
-    precHist = precMultiplier * aphFloat
-    
-    tx = product.createRisk(startDate, endDate, placeId, lat, long, trigger, exit, precHist, precDays, {'from': insurer})
-    riskId = tx.return_value
-
-    customerFunding = 500
-    fund_customer(instance, instanceOperator, customer, token, customerFunding)
+    riskId = create_risk(
+        product,
+        insurer,
+        place=place,
+        startDate=startDate,
+        endDate=endDate)
+    print('riskId {}'.format(riskId))
 
     premium = 300
     sumInsured = 2000
-    tx = product.applyForPolicy(customer, premium, sumInsured, riskId, {'from': insurer})
-    processId = tx.return_value
+    processId = apply_for_policy_with_bundle(
+        instance,
+        instanceOperator,
+        customer,
+        product,
+        bundleId,
+        riskId,
+        None,
+        sumInsured,
+        premium)
+    print('processId {}'.format(processId))
 
     print('--- step trigger oracle (call chainlin node) -------------')
 
@@ -264,11 +267,11 @@ def test_oracle_responds_with_invalid_aaay(
 
     # create oracle response with precActual value out of range
     # precActual value selected triggers a payout
-    precActual = 2000
+    precActual = 10001
 
     data = oracle.encodeFulfillParameters(
         clRequestEvent['requestId'], 
-        placeId,
+        place,
         startDate, 
         endDate, 
         precActual
@@ -311,7 +314,7 @@ def test_oracle_responds_with_invalid_aaay(
 
     validData = oracle.encodeFulfillParameters(
         clRequestEvent['requestId'], 
-        placeId,
+        place,
         startDate, 
         endDate, 
         validAaay

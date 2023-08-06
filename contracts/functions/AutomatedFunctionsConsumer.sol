@@ -4,7 +4,7 @@ pragma solidity ^0.8.2;
 import {Functions, FunctionsClient} from "./dev/functions/FunctionsClient.sol";
 // import "@chainlink/contracts/src/v0.8/dev/functions/FunctionsClient.sol"; // Once published
 import {ConfirmedOwner} from "@chainlink/contracts/src/v0.8/ConfirmedOwner.sol";
-import {AutomationCompatibleInterface} from "@chainlink/contracts/src/v0.8/AutomationCompatible.sol";
+import {AutomationCompatibleInterface} from "../automation/interfaces/AutomationCompatibleInterface.sol";
 
 /**
  * @title Automated Functions Consumer contract

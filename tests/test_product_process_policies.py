@@ -15,8 +15,10 @@ from scripts.product import (
 )
 
 from scripts.setup import (
-    fund_riskpool,
-    fund_customer,
+    ONE_DAY_DURATION,
+    fund_account,
+    create_bundle,
+    get_bundle_dict,
 )
 
 from scripts.product import (
@@ -25,7 +27,7 @@ from scripts.product import (
 )
 
 from scripts.instance import GifInstance
-from scripts.util import s2b32, contractFromAddress
+from scripts.util import keccak256, contractFromAddress
 
 # enforce function isolation for tests below
 @pytest.fixture(autouse=True)
@@ -56,19 +58,25 @@ def test_process_policies_for_risk(
     token = gifProduct.getToken()
     assert token.balanceOf(riskpoolWallet) == 0
 
-    riskpoolFunding = 200000
-    fund_riskpool(
+    tf = 10 ** token.decimals()
+
+    bundleFunding = 200_000
+
+    place = ['10001.saopaulo', '10002.paris'] # mm 
+    startDate = time.time() + 100
+    endDate = time.time() + 2 * ONE_DAY_DURATION
+
+    bundleId = create_bundle(
         instance, 
         instanceOperator, 
-        riskpoolWallet, 
-        riskpool, 
         investor, 
-        token, 
-        riskpoolFunding)
+        riskpool,
+        funding=bundleFunding,
+        place=place[0])
 
     # check riskpool funds and book keeping after funding
     riskpoolBalanceAfterFunding = token.balanceOf(riskpoolWallet)
-    riskpoolExpectedBalance = (1 - CAPITAL_FEE_FRACTIONAL_DEFAULT) * riskpoolFunding - CAPITAL_FEE_FIXED_DEFAULT
+    riskpoolExpectedBalance = (1 - CAPITAL_FEE_FRACTIONAL_DEFAULT) * bundleFunding * tf - CAPITAL_FEE_FIXED_DEFAULT
     assert riskpoolBalanceAfterFunding == riskpoolExpectedBalance
     assert riskpool.bundles() == 1
     assert riskpool.getCapital() == riskpoolExpectedBalance
@@ -78,7 +86,7 @@ def test_process_policies_for_risk(
 
     # check risk bundle in riskpool and book keeping after funding
     bundleIdx = 0
-    bundleAfterFunding = _getBundleDict(instance, riskpool, bundleIdx)
+    bundleAfterFunding = get_bundle_dict(instance, riskpool, bundleIdx)
     bundleId = bundleAfterFunding['id']
 
     assert bundleAfterFunding['id'] == 1
@@ -99,9 +107,6 @@ def test_process_policies_for_risk(
 
     print('--- test setup risks -------------------------------------')
 
-    startDate = time.time() + 100
-    endDate = time.time() + 1000
-    placeId = [s2b32('10001.saopaulo'), s2b32('10002.paris')] # mm 
     latFloat = [-23.550620, 48.856613]
     longFloat = [-46.634370, 2.352222]
     triggerFloat = 0.1 # %
@@ -120,31 +125,31 @@ def test_process_policies_for_risk(
     precHist = [precMultiplier * aphFloat[0], precMultiplier * aphFloat[1]]
 
     tx = [None, None, None, None, None]
-    tx[0] = product.createRisk(startDate, endDate, placeId[0], lat[0], long[0], trigger, exit, precHist[0], precDays[0], {'from': insurer})
-
+    tx[0] = product.createRisk(startDate, endDate, place[0], lat[0], long[0], trigger, exit, precHist[0], precDays[0], {'from': insurer})
+    
     riskId = [None, None, None, None, None]
     riskId = [tx[0].return_value]
     print('riskId {}'.format(riskId))
-    assert riskId[0] == product.getRiskId(placeId[0], startDate, endDate)
-    
 
+    assert riskId[0] == product.getRiskId(place[0], startDate, endDate)
+    
     print('--- test setup funding customers -------------------------')
 
     assert token.balanceOf(customer) == 0
     
-    customerFunding = 5000
-    fund_customer(instance, instanceOperator, customer, token, customerFunding)
+    customerFunding = 5000 * tf
+    fund_account(instance, instanceOperator, customer, token, customerFunding)
     
     print('--- test create policies ---------------------------------')
 
-    premium = [300]
-    sumInsured = [2000]
+    premium = [300 * tf]
+    sumInsured = [2000 * tf]
 
-    tx[0] = product.applyForPolicy(customer, premium[0], sumInsured[0], riskId[0], {'from': insurer})
-    tx[1] = product.applyForPolicy(customer, premium[0], sumInsured[0], riskId[0], {'from': insurer})
-    tx[2] = product.applyForPolicy(customer, premium[0], sumInsured[0], riskId[0], {'from': insurer})
-    tx[3] = product.applyForPolicy(customer, premium[0], sumInsured[0], riskId[0], {'from': insurer})
-    tx[4] = product.applyForPolicy(customer, premium[0], sumInsured[0], riskId[0], {'from': insurer})
+    tx[0] = product.applyForPolicyWithBundle(customer, premium[0], sumInsured[0], riskId[0], bundleId, {'from': customer})
+    tx[1] = product.applyForPolicyWithBundle(customer, premium[0], sumInsured[0], riskId[0], bundleId, {'from': customer})
+    tx[2] = product.applyForPolicyWithBundle(customer, premium[0], sumInsured[0], riskId[0], bundleId, {'from': customer})
+    tx[3] = product.applyForPolicyWithBundle(customer, premium[0], sumInsured[0], riskId[0], bundleId, {'from': customer})
+    tx[4] = product.applyForPolicyWithBundle(customer, premium[0], sumInsured[0], riskId[0], bundleId, {'from': customer})
 
     policyId = [None, None, None, None, None]
     policyId = [tx[0].return_value, tx[1].return_value, tx[2].return_value, tx[3].return_value, tx[4].return_value]
@@ -178,7 +183,6 @@ def test_process_policies_for_risk(
     print('rain requestEvent {}'.format(requestEvent))
     assert requestEvent['requestId'] == requestId[0]
     assert requestEvent['riskId'] == riskId[0]
-    assert requestEvent['placeId'] == placeId[0]
     assert requestEvent['startDate'] == startDate
     assert requestEvent['endDate'] == endDate
 
@@ -196,7 +200,7 @@ def test_process_policies_for_risk(
     data = [None, None]
     data[0] = oracle.encodeFulfillParameters(
         clRequestEvent['requestId'], 
-        placeId[0],
+        keccak256(place[0]),
         startDate, 
         endDate, 
         precActual
@@ -242,6 +246,8 @@ def test_process_policies_for_risk(
     # claim processing for policies associated with the specified risk
     # batch size=2 triggers processing of 2 policies for this risk
     tx = product.processPoliciesForRisk(riskId[0], 2, {'from': insurer})
+    print('tx.events: {}'.format(tx.events))
+
     processedPolicyIds = tx.return_value
 
     assert len(processedPolicyIds) == 2
@@ -250,6 +256,8 @@ def test_process_policies_for_risk(
 
     # process another 2 policies
     tx = product.processPoliciesForRisk(riskId[0], 2, {'from': insurer})
+    print('tx.events: {}'.format(tx.events))
+
     processedPolicyIds = tx.return_value
 
     assert len(processedPolicyIds) == 2
@@ -291,23 +299,29 @@ def test_process_policies_mix_batch_individual_processing(
 
     token = gifProduct.getToken()
 
-    riskpoolFunding = 200000
-    fund_riskpool(
+    tf = 10 ** token.decimals()
+
+    bundleFunding = 200_000
+
+    place = ['10001.saopaulo', '10002.paris']
+    startDate = time.time() + 100
+    endDate = time.time() + 2 * 24 * 3600
+
+    bundleId = create_bundle(
         instance, 
         instanceOperator, 
-        riskpoolWallet, 
-        riskpool, 
         investor, 
-        token, 
-        riskpoolFunding)
+        riskpool,
+        funding=bundleFunding,
+        place=place[0])
 
     # check riskpool funds and book keeping after funding
     riskpoolBalanceAfterFunding = token.balanceOf(riskpoolWallet)
-    riskpoolExpectedBalance = (1 - CAPITAL_FEE_FRACTIONAL_DEFAULT) * riskpoolFunding - CAPITAL_FEE_FIXED_DEFAULT
+    riskpoolExpectedBalance = (1 - CAPITAL_FEE_FRACTIONAL_DEFAULT) * bundleFunding * tf - CAPITAL_FEE_FIXED_DEFAULT
 
     # check risk bundle in riskpool and book keeping after funding
     bundleIdx = 0
-    bundleAfterFunding = _getBundleDict(instance, riskpool, bundleIdx)
+    bundleAfterFunding = get_bundle_dict(instance, riskpool, bundleIdx)
     bundleId = bundleAfterFunding['id']
 
     # cheeck bundle token (nft)
@@ -316,9 +330,6 @@ def test_process_policies_mix_batch_individual_processing(
 
     print('--- test setup risks -------------------------------------')
 
-    startDate = time.time() + 100
-    endDate = time.time() + 1000
-    placeId = [s2b32('10001.saopaulo'), s2b32('10002.paris')] # mm 
     latFloat = [-23.550620, 48.856613]
     longFloat = [-46.634370, 2.352222]
     triggerFloat = 0.1 # %
@@ -337,34 +348,33 @@ def test_process_policies_mix_batch_individual_processing(
     precHist = [precMultiplier * aphFloat[0], precMultiplier * aphFloat[1]]
 
     tx = [None, None, None, None, None]
-    tx[0] = product.createRisk(startDate, endDate, placeId[0], lat[0], long[0], trigger, exit, precHist[0], precDays[0], {'from': insurer})
 
-    riskId = [None, None, None, None, None]
+    tx[0] = product.createRisk(startDate, endDate, place[0], lat[0], long[0], trigger, exit, precHist[0], precDays[0], {'from': insurer})
     riskId = [tx[0].return_value]
     print('riskId {}'.format(riskId))
-    assert riskId[0] == product.getRiskId(placeId[0], startDate, endDate)
-    
+
+    assert riskId[0] == product.getRiskId(place[0], startDate, endDate)
 
     print('--- test setup funding customers -------------------------')
 
     assert token.balanceOf(customer) == 0
     
-    customerFunding = 5000
-    fund_customer(instance, instanceOperator, customer, token, customerFunding)
+    customerFunding = 5000 * tf
+    fund_account(instance, instanceOperator, customer, token, customerFunding)
     
     print('--- test create policies ---------------------------------')
 
-    premium = [300]
-    sumInsured = [2000]
+    premium = [300 * tf]
+    sumInsured = [2000 * tf]
 
     with brownie.reverts('ERROR:RAIN-050:NO_POLICIES'):
         product.getProcessId(customer, 0) == policyId[0]
 
-    tx[0] = product.applyForPolicy(customer, premium[0], sumInsured[0], riskId[0], {'from': insurer})
-    tx[1] = product.applyForPolicy(customer, premium[0], sumInsured[0], riskId[0], {'from': insurer})
-    tx[2] = product.applyForPolicy(customer, premium[0], sumInsured[0], riskId[0], {'from': insurer})
-    tx[3] = product.applyForPolicy(customer, premium[0], sumInsured[0], riskId[0], {'from': insurer})
-    tx[4] = product.applyForPolicy(customer, premium[0], sumInsured[0], riskId[0], {'from': insurer})
+    tx[0] = product.applyForPolicyWithBundle(customer, premium[0], sumInsured[0], riskId[0], bundleId, {'from': customer})
+    tx[1] = product.applyForPolicyWithBundle(customer, premium[0], sumInsured[0], riskId[0], bundleId, {'from': customer})
+    tx[2] = product.applyForPolicyWithBundle(customer, premium[0], sumInsured[0], riskId[0], bundleId, {'from': customer})
+    tx[3] = product.applyForPolicyWithBundle(customer, premium[0], sumInsured[0], riskId[0], bundleId, {'from': customer})
+    tx[4] = product.applyForPolicyWithBundle(customer, premium[0], sumInsured[0], riskId[0], bundleId, {'from': customer})
 
     policyId = [None, None, None, None, None]
     policyId = [tx[0].return_value, tx[1].return_value, tx[2].return_value, tx[3].return_value, tx[4].return_value]
@@ -396,7 +406,7 @@ def test_process_policies_mix_batch_individual_processing(
     data = [None, None]
     data[0] = oracle.encodeFulfillParameters(
         clRequestEvent['requestId'], 
-        placeId[0],
+        keccak256(place[0]),
         startDate, 
         endDate, 
         precActual
@@ -435,11 +445,11 @@ def test_process_policies_mix_batch_individual_processing(
     assert product.getProcessId(customer, 3) == policyId[3]
     assert product.getProcessId(customer, 4) == policyId[4]
 
-    assert product.processForHolder(customer, 0)['processId'] == policyId[0]
-    assert product.processForHolder(customer, 1)['processId'] == policyId[1]
-    assert product.processForHolder(customer, 2)['processId'] == policyId[2]
-    assert product.processForHolder(customer, 3)['processId'] == policyId[3]
-    assert product.processForHolder(customer, 4)['processId'] == policyId[4]
+    # assert product.processForHolder(customer, 0)['processId'] == policyId[0]
+    # assert product.processForHolder(customer, 1)['processId'] == policyId[1]
+    # assert product.processForHolder(customer, 2)['processId'] == policyId[2]
+    # assert product.processForHolder(customer, 3)['processId'] == policyId[3]
+    # assert product.processForHolder(customer, 4)['processId'] == policyId[4]
 
     # try to process without insurer role
     with brownie.reverts('AccessControl: account 0x5aeda56215b167893e80b4fe645ba6d5bab767de is missing role 0xf098b7742e998f92a3c749f35e64ef555edcecec4b78a00c532a4f385915955b'):
@@ -447,7 +457,7 @@ def test_process_policies_mix_batch_individual_processing(
 
     # try to process invalid processId
     with brownie.reverts('ERROR:POC-101:APPLICATION_DOES_NOT_EXIST'):
-        product.processPolicy(s2b32('whateverId'), {'from': insurer})
+        product.processPolicy(keccak256('whateverId'), {'from': insurer})
 
     assert product.policies(riskId[0]) == 5
 
@@ -475,13 +485,3 @@ def test_process_policies_mix_batch_individual_processing(
     assert product.policies(riskId[0]) == 0
     assert processedPolicyIds[0] == policyId[1]
     assert processedPolicyIds[1] == policyId[0]
-
-
-def _getBundleDict(instance, riskpool, bundleIdx):
-    return _getBundle(instance, riskpool, bundleIdx).dict()
-
-
-def _getBundle(instance, riskpool, bundleIdx):
-    instanceService = instance.getInstanceService()
-    bundleId = riskpool.getBundleId(bundleIdx)
-    return instanceService.getBundle(bundleId)

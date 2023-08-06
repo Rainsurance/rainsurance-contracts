@@ -7,7 +7,7 @@ import "../interfaces/FunctionsBillingRegistryInterface.sol";
 import "../interfaces/FunctionsOracleInterface.sol";
 import "../interfaces/FunctionsClientInterface.sol";
 import "@chainlink/contracts/src/v0.8/interfaces/TypeAndVersionInterface.sol";
-import "@chainlink/contracts/src/v0.8/interfaces/ERC677ReceiverInterface.sol";
+import "../interfaces/ERC677ReceiverInterface.sol";
 import "../interfaces/AuthorizedOriginReceiverInterface.sol";
 import "./ConfirmedOwnerUpgradeable.sol";
 import "../AuthorizedReceiver.sol";

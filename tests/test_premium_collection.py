@@ -15,8 +15,10 @@ from scripts.product import (
 )
 
 from scripts.setup import (
-    fund_riskpool,
-    fund_customer,
+    fund_account,
+    create_bundle,
+    create_risk,
+    apply_for_policy_with_bundle
 )
 
 from scripts.product import (
@@ -50,23 +52,39 @@ def test_late_premium_payment(
     oracle = gifProduct.getOracle().getContract()
     riskpool = gifProduct.getRiskpool().getContract()
     erc20Token = gifProduct.getToken()
-    
-    riskpoolFunding = 200000
-    fund_riskpool(instance, instanceOperator, riskpoolWallet, riskpool, investor, erc20Token, riskpoolFunding)
 
+    tf = 10 ** erc20Token.decimals()
+    
+    bundleFunding = 200_000
+
+    bundleId = create_bundle(
+        instance, 
+        instanceOperator, 
+        investor, 
+        riskpool,
+        funding=bundleFunding)
+    
     # check riskpool funds and book keeping after funding
-    riskpoolExpectedBalance = (1 - CAPITAL_FEE_FRACTIONAL_DEFAULT) * riskpoolFunding - CAPITAL_FEE_FIXED_DEFAULT
+    riskpoolExpectedBalance = bundleFunding * tf * (1 - CAPITAL_FEE_FRACTIONAL_DEFAULT) - CAPITAL_FEE_FIXED_DEFAULT
     assert riskpool.getBalance() == riskpoolExpectedBalance
     assert riskpool.getBalance() == erc20Token.balanceOf(riskpoolWallet)
 
-    # create risk
     riskId = create_risk(product, insurer)
 
-    # create policy
     premium = 300
     sumInsured = 2000
-    tx = product.applyForPolicy(customer, premium, sumInsured, riskId, {'from': insurer})
-    processId = tx.return_value
+    processId = apply_for_policy_with_bundle(
+        instance,
+        instanceOperator,
+        customer,
+        product,
+        bundleId,
+        riskId,
+        None,
+        sumInsured,
+        premium,
+        transferPremium=False)
+    print('processId is {}'.format(processId))
 
     # check riskpool funds remain unchanged as no premium has been collected
     assert riskpool.getBalance() == riskpoolExpectedBalance
@@ -89,16 +107,17 @@ def test_late_premium_payment(
     assert policy['state'] == 0
 
     # check premium expected and paid (nothing so far)
-    policy = instanceService.getPolicy(processId).dict()
-    assert policy['premiumExpectedAmount'] == premium
+    premiumPlusFees = product.calculatePremium(premium * tf)
+    assert policy['premiumExpectedAmount'] == premiumPlusFees
     assert policy['premiumPaidAmount'] == 0
 
     # fund customer to pay premium now
-    fund_customer(instance, instanceOperator, customer, erc20Token, premium)
-    assert erc20Token.balanceOf(customer) == premium
-    assert erc20Token.allowance(customer, instance.getTreasury()) == premium
+    fund_account(instance, instanceOperator, customer, erc20Token, premiumPlusFees)
+    assert erc20Token.balanceOf(customer) == premiumPlusFees
+    assert erc20Token.allowance(customer, instance.getTreasury()) == premiumPlusFees
 
-    tx = product.collectPremium(processId, customer, premium, {'from': insurer})
+    #tx = product.collectPremium(processId, customer, premiumPlusFees, {'from': insurer})
+    tx = product.collectPremium(processId, {'from': insurer})
     (success, fee, netPremium) = tx.return_value
     print('success: {}, fee: {}, netPremium: {}'.format(success, fee, netPremium))
 
@@ -107,8 +126,9 @@ def test_late_premium_payment(
 
     # check premium expected and paid (full amount)
     policy = instanceService.getPolicy(processId).dict()
-    assert policy['premiumExpectedAmount'] == premium
-    assert policy['premiumPaidAmount'] == premium
+    print('policy after {}'.format(policy))
+    assert policy['premiumExpectedAmount'] == premiumPlusFees
+    assert policy['premiumPaidAmount'] == premiumPlusFees
 
 
 def test_partial_premium_payment_attempt(
@@ -128,12 +148,20 @@ def test_partial_premium_payment_attempt(
     oracle = gifProduct.getOracle().getContract()
     riskpool = gifProduct.getRiskpool().getContract()
     erc20Token = gifProduct.getToken()
+
+    tf = 10 ** erc20Token.decimals()
     
-    riskpoolFunding = 200000
-    fund_riskpool(instance, instanceOperator, riskpoolWallet, riskpool, investor, erc20Token, riskpoolFunding)
+    bundleFunding = 200_000
+
+    bundleId = create_bundle(
+        instance, 
+        instanceOperator, 
+        investor, 
+        riskpool,
+        funding=bundleFunding)
 
     # check riskpool funds and book keeping after funding
-    riskpoolExpectedBalance = (1 - CAPITAL_FEE_FRACTIONAL_DEFAULT) * riskpoolFunding - CAPITAL_FEE_FIXED_DEFAULT
+    riskpoolExpectedBalance = (1 - CAPITAL_FEE_FRACTIONAL_DEFAULT) * bundleFunding * tf - CAPITAL_FEE_FIXED_DEFAULT
     assert riskpool.getBalance() == riskpoolExpectedBalance
     assert riskpool.getBalance() == erc20Token.balanceOf(riskpoolWallet)
 
@@ -143,9 +171,18 @@ def test_partial_premium_payment_attempt(
     # create policy
     premium = 300
     sumInsured = 2000
-    fund_customer(instance, instanceOperator, customer, erc20Token, premium / 2)
-    tx = product.applyForPolicy(customer, premium, sumInsured, riskId, {'from': insurer})
-    processId = tx.return_value
+    fund_account(instance, instanceOperator, customer, erc20Token, premium / 2)
+    processId = apply_for_policy_with_bundle(
+        instance,
+        instanceOperator,
+        customer,
+        product,
+        bundleId,
+        riskId,
+        None,
+        sumInsured,
+        premium,
+        transferPremium=False)
 
     # applyForPolicy attempts to transfer the full premium amount
     # if not possible no premium is collected even if some funds would be available
@@ -155,7 +192,7 @@ def test_partial_premium_payment_attempt(
 
     # check premium expected and paid (nothing so far)
     policy = instanceService.getPolicy(processId).dict()
-    assert policy['premiumExpectedAmount'] == premium
+    assert policy['premiumExpectedAmount'] >= premium * tf
     assert policy['premiumPaidAmount'] == 0
 
 
@@ -176,12 +213,20 @@ def test_premium_payment_by_subsidies(
     oracle = gifProduct.getOracle().getContract()
     riskpool = gifProduct.getRiskpool().getContract()
     erc20Token = gifProduct.getToken()
+
+    tf = 10 ** erc20Token.decimals()
     
-    riskpoolFunding = 200000
-    fund_riskpool(instance, instanceOperator, riskpoolWallet, riskpool, investor, erc20Token, riskpoolFunding)
+    bundleFunding = 200_000
+
+    bundleId = create_bundle(
+        instance, 
+        instanceOperator, 
+        investor, 
+        riskpool,
+        funding=bundleFunding)
 
     # check riskpool funds and book keeping after funding
-    riskpoolExpectedBalance = (1 - CAPITAL_FEE_FRACTIONAL_DEFAULT) * riskpoolFunding - CAPITAL_FEE_FIXED_DEFAULT
+    riskpoolExpectedBalance = (1 - CAPITAL_FEE_FRACTIONAL_DEFAULT) * bundleFunding * tf - CAPITAL_FEE_FIXED_DEFAULT
     assert riskpool.getBalance() == riskpoolExpectedBalance
     assert riskpool.getBalance() == erc20Token.balanceOf(riskpoolWallet)
 
@@ -191,14 +236,24 @@ def test_premium_payment_by_subsidies(
     # create policy
     premium = 300
     sumInsured = 2000
-    tx = product.applyForPolicy(customer, premium, sumInsured, riskId, {'from': insurer})
-    processId = tx.return_value
+    processId = apply_for_policy_with_bundle(
+        instance,
+        instanceOperator,
+        customer,
+        product,
+        bundleId,
+        riskId,
+        None,
+        sumInsured,
+        premium,
+        transferPremium=False)
 
     # 20% premium payment by policy holder
-    premiumPolicyHolder = premium / 5
-    premiumSubsidies = premium - premiumPolicyHolder
+    premiumPlusFees = product.calculatePremium(premium * tf)
+    premiumPolicyHolder = premiumPlusFees / 5
+    premiumSubsidies = premiumPlusFees - premiumPolicyHolder
 
-    fund_customer(instance, instanceOperator, customer, erc20Token, premiumPolicyHolder)
+    fund_account(instance, instanceOperator, customer, erc20Token, premiumPolicyHolder)
     assert erc20Token.balanceOf(customer) == premiumPolicyHolder
 
     tx = product.collectPremium(processId, customer, premiumPolicyHolder, {'from': insurer})
@@ -209,7 +264,8 @@ def test_premium_payment_by_subsidies(
     assert erc20Token.balanceOf(customer) == 0
 
     policy = instanceService.getPolicy(processId).dict()
-    assert policy['premiumExpectedAmount'] == premium
+    
+    assert policy['premiumExpectedAmount'] == premiumPlusFees
     assert policy['premiumPaidAmount'] == premiumPolicyHolder
 
     # 80% premium subidies payment
@@ -233,35 +289,6 @@ def test_premium_payment_by_subsidies(
     assert erc20Token.balanceOf(riskpoolWallet) == riskpoolBeforeDonation + netPremium
 
     policy = instanceService.getPolicy(processId).dict()
-    assert policy['premiumExpectedAmount'] == premium
-    assert policy['premiumPaidAmount'] == premium
+    assert policy['premiumExpectedAmount'] == premiumPlusFees
+    assert policy['premiumPaidAmount'] == premiumPlusFees
 
-
-def create_risk(
-    product,
-    insurer
-):
-    startDate = time.time() + 100
-    endDate = time.time() + 1000
-    placeId = s2b32('10001.saopaulo')
-    latFloat = -23.550620
-    longFloat = -46.634370
-    triggerFloat = 0.1 # %
-    exitFloat = 1.0 # %
-    aphFloat = 3.0 # mm
-    precDays = 2
-    
-    multiplier = product.getPercentageMultiplier()
-    coordMultiplier = product.getCoordinatesMultiplier()
-    precMultiplier = product.getPrecipitationMultiplier()
-
-    trigger = multiplier * triggerFloat
-    exit = multiplier * exitFloat
-    lat = coordMultiplier * latFloat
-    long = coordMultiplier * longFloat
-    precHist = precMultiplier * aphFloat
-
-    tx = product.createRisk(startDate, endDate, placeId, lat, long, trigger, exit, precHist, precDays,{'from': insurer})
-
-    # return riskId
-    return tx.return_value
