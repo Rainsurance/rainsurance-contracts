@@ -146,21 +146,21 @@ class GifOracle(object):
         try:
             print('6) oracle {} proposing to instance by oracle provider {}'.format(
                 self.oracle, oracleProvider))
-
             componentOwnerService.propose(
                 self.oracle,
-                {'from': oracleProvider})
-
-            print('7) approval of oracle id {} by instance operator {}'.format(
-                self.oracle.getId(), instance.getOwner()))
-
-            instanceOperatorService.approve(
-                self.oracle.getId(),
-                {'from': instance.getOwner()})
-            
+                {'from': oracleProvider})  
         except Exception as err:
             print(f"Unexpected {err=}")
     
+        try:
+            print('7) approval of oracle id {} by instance operator {}'.format(
+                self.oracle.getId(), instance.getOwner()))
+            instanceOperatorService.approve(
+                self.oracle.getId(),
+                {'from': instance.getOwner()})
+        except Exception as err:
+            print(f"Unexpected {err=}")
+
     def getId(self) -> int:
         return self.oracle.getId()
     

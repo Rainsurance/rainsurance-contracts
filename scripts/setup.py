@@ -105,8 +105,7 @@ def create_risk(
 
     tx = product.createRisk(startDate, endDate, place, coordMultiplier * lat, coordMultiplier * long, multiplier * trigger, multiplier * exit, precHist * precMultiplier, precDays, {'from': insurer})
 
-    return tx.return_value
-    # return tx.events['LogRainRiskDataCreated']['riskId']
+    return tx.events['LogRainRiskDataCreated']['riskId']
 
 
 def apply_for_policy_with_bundle(

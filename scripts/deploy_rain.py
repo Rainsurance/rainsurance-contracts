@@ -62,14 +62,10 @@ from scripts.util import (
 # product/oracle/riskpool base name
 BASE_NAME = 'Rain'
 
-# default setup for all_in_1 -> create_policy
-SUM_INSURED_AMOUNT = 2000
-PREMIUM_AMOUNT = 300
-
 # contract classes for all_in_1
 CONTRACT_CLASS_TOKEN = Usdc
 CONTRACT_CLASS_PRODUCT = RainProduct
-CONTRACT_CLASS_ORACLE = RainOracle # RainOracle | RainOracleCLFunctions
+CONTRACT_CLASS_ORACLE = RainOracleCLFunctions # RainOracle | RainOracleCLFunctions
 CONTRACT_CLASS_RISKPOOL = RainRiskpool
 
 def help():
@@ -84,7 +80,8 @@ def help_testnet():
     print('======== deploy instructions for mumbai testnet ========')
     print('* Attention: in order for the following instructions to work you must have loaded the brownie console with the parameter --network=mumbai')
     print('* You can add the mumbai network by running: brownie networks add Ethereum Mumbai host=QUICKNODE_RPC_URL chainid=80001 explorer=https://api-testnet.polygonscan.com/api')
-    print('* Below instructions assume that you have a `gif_instance_address.txt` file in this projects root directory with the following keys: registry, token, link_token')
+    print('* These instructions assume that you have already deployed a full GIF instance before')
+    print('* At this point you need to have a `gif_instance_address.txt` file in the root directory with the following keys: registry, token, link_token')
     print('from scripts.deploy_rain import all_in_1, verify_deploy')
     print('from scripts.deploy_product import stakeholders_accounts_from_mnemonic')
     print("(customer, customer2, product, oracle, riskpool, riskpoolWallet, investor, usdc, instance, instanceService, instanceOperator, bundleId, riskId, processId, d) = all_in_1(stakeholders_accounts=stakeholders_accounts_from_mnemonic(), deploy_all=False, publish_source=True, chainLinkOracleAddress='0x40193c8518BB267228Fc409a613bDbD8eC5a97b3', chainLinkJobId='ca98366cc7314957b8c012c72f05aeeb', chainLinkPaymentAmount=10**17)")
@@ -105,7 +102,7 @@ def help_testnet_clfunctions():
     print('* You need to deploy the Chainlink Functions-based Oracle/Client contract by running the task `functions-deploy-rainsurance` (use the ORACLE_PROVIDER account for that)')
     print('* Second you must create a new Chainlink Functions subscription and add that contract as consumer by running the task `functions-sub-create`')
     print('* Then you must register a new Chainlink Upkeep by visiting this website: https://automation.chain.link/mumbai/new (choose Custom Logic / enter the contract address / 700000 as gas limit / fund the contract with LINK)')
-    print('* Finally you must add the address of the contract in the `gif_instance_address.txt` file in this projects root directory as `oracle`')
+    print('* Finally you must add the address of the contract in the `gif_instance_address.txt` file in the root directory as `oracle`')
     print('* Now you are all set on the Oracle side! You can run the following instructions inside the brownie console to deploy the GIF Product and RiskPool:')
     print('from scripts.deploy_rain import all_in_1, verify_deploy')
     print('from scripts.deploy_product import stakeholders_accounts_from_mnemonic')
@@ -470,6 +467,7 @@ def _get_policy_state(state):
 def _get_bundle_state(state):
     return (BUNDLE_STATE[state], state)
 
+
 def _getComponentState(component_id, instance_service):
     state = instance_service.getComponentState(component_id)
     return (COMPONENT_STATE[state], state)
@@ -528,22 +526,16 @@ def new_bundle(d) -> int:
 def new_policy(
     d,
     bundleId,
-    riskId,
-    sum_insured_amount = SUM_INSURED_AMOUNT,
-    premium_amount = PREMIUM_AMOUNT,
+    riskId
 ):
-    processId = apply_for_policy_with_bundle(
+    return apply_for_policy_with_bundle(
         d[INSTANCE],
         d[INSTANCE_OPERATOR],
         d[CUSTOMER1],
         d[PRODUCT],
         bundleId,
-        riskId,
-        sumInsured=sum_insured_amount,
-        premium=premium_amount
+        riskId
     )
-
-    return processId
 
 
 def inspect_fee(
@@ -648,7 +640,6 @@ def inspect_fee(
 #     return {'bundleId':bundleId, 'apr':aprMin, 'premium':premium, 'netPremium':netPremium, 'comment':'recommended bundle'}
 
 
-#TODO: rever all_in_one x all_in_1_base
 def all_in_1(
     stakeholders_accounts=None,
     registry_address=None,
@@ -679,7 +670,6 @@ def all_in_1(
         chainLinkPaymentAmount=chainLinkPaymentAmount)
 
 
-#TODO: rever
 def verify_deploy(
     d, 
     token,
