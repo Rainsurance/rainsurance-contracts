@@ -168,7 +168,7 @@ def verify_element(
 
 
 # Metamask Flask
-def stakeholders_accounts():
+def stakeholders_accounts_from_pk():
     return {
         INSTANCE_OPERATOR: accounts.add(os.getenv("INSTANCE_OPERATOR_PK")),
         INSTANCE_WALLET: accounts.add(os.getenv("INSTANCE_WALLET_PK")),
@@ -181,6 +181,22 @@ def stakeholders_accounts():
         INSURER: accounts.add(os.getenv("INSURER_PK")),
         CUSTOMER1: accounts.add(os.getenv("CUSTOMER1_PK")),
         CUSTOMER2: accounts.add(os.getenv("CUSTOMER2_PK")),
+    }
+
+def stakeholders_accounts_from_mnemonic():
+    a = accounts.from_mnemonic(os.getenv("WALLET_MNEMONIC"), count=11)
+    return {
+        INSTANCE_OPERATOR: a[0],
+        INSTANCE_WALLET: a[1],
+        ORACLE_PROVIDER: a[2],
+        CHAINLINK_NODE_OPERATOR: a[3],
+        RISKPOOL_KEEPER: a[4],
+        RISKPOOL_WALLET: a[5],
+        INVESTOR: a[6],
+        PRODUCT_OWNER: a[7],
+        INSURER: a[8],
+        CUSTOMER1: a[9],
+        CUSTOMER2: a[10],
     }
 
 
@@ -649,31 +665,6 @@ def all_in_1_base(
         risk_id,
         process_id,
         deployment)
-
-
-#TODO: remover?
-def get_riskpool_token(riskpool):
-    tokenAddress = riskpool.getErc20Token()
-    return contract_from_address(interface.IERC20Metadata, tokenAddress)
-
-
-#TODO: remover?
-def get_product_token(product):
-    tokenAddress = product.getToken()
-    return contract_from_address(interface.IERC20Metadata, tokenAddress)
-
-
-#TODO: remover?
-def fund_and_create_allowance(
-    instance,
-    instanceOperator,
-    recipient,
-    token,
-    funding
-):
-    instanceService = instance.getInstanceService()
-    token.transfer(recipient, funding, {'from': instanceOperator})
-    token.approve(instanceService.getTreasuryAddress(), funding, {'from': recipient})
 
 
 #TODO: remover?

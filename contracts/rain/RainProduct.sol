@@ -147,7 +147,7 @@ contract RainProduct is
 
         _validateRiskParameters(trigger, exit);
         //TODO: uncomment the line below (commented for testing purposes)
-        require(startDate > block.timestamp, "ERROR:RAIN-044:RISK_START_DATE_INVALID"); // solhint-disable-line
+        //require(startDate > block.timestamp, "ERROR:RAIN-044:RISK_START_DATE_INVALID"); // solhint-disable-line
         require(endDate > startDate, "ERROR:RAIN-045:RISK_END_DATE_INVALID");
         require(endDate - startDate>= RISK_DURATION_MIN, "ERROR:RAIN-046:RISK_DURATION_MIN_INVALID");
         require(endDate - startDate<= RISK_DURATION_MAX, "ERROR:RAIN-047:RISK_DURATION_MAX_INVALID");

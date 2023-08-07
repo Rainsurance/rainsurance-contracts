@@ -44,9 +44,6 @@ from scripts.deploy_product import (
     verify_deploy_base,
     from_component_base,
     from_registry_base,
-    fund_and_create_allowance,
-    get_product_token,
-    get_riskpool_token,
     get_bundle_id,
     to_token_amount
 )
@@ -64,20 +61,6 @@ from scripts.util import (
 
 # product/oracle/riskpool base name
 BASE_NAME = 'Rain'
-
-# default setup for all_in_1 -> create_policy
-START_DATE = time.time() + 1000
-END_DATE = time.time() + 10000
-PLACE_ID = '10001.saopaulo'
-LAT_FLOAT = -23.550620
-LONG_FLOAT = -46.634370
-TRIGGER = 0.1
-EXIT = 1.0
-PRECIP_HIST = 5.0
-PRECIP_HIST_DAYS = 2
-
-# default setup for all_in_1 -> create_bundle
-BUNDLE_FUNDING = 10 ** 6
 
 # default setup for all_in_1 -> create_policy
 SUM_INSURED_AMOUNT = 2000
@@ -101,9 +84,10 @@ def help_testnet():
     print('======== deploy instructions for mumbai testnet ========')
     print('* Attention: in order for the following instructions to work you must have loaded the brownie console with the parameter --network=mumbai')
     print('* You can add the mumbai network by running: brownie networks add Ethereum Mumbai host=QUICKNODE_RPC_URL chainid=80001 explorer=https://api-testnet.polygonscan.com/api')
+    print('* Below instructions assume that you have a `gif_instance_address.txt` file in this projects root directory with the following keys: registry, token, link_token')
     print('from scripts.deploy_rain import all_in_1, verify_deploy')
-    print('from scripts.deploy_product import stakeholders_accounts')
-    print("(customer, customer2, product, oracle, riskpool, riskpoolWallet, investor, usdc, instance, instanceService, instanceOperator, bundleId, riskId, processId, d) = all_in_1(stakeholders_accounts=stakeholders_accounts(), deploy_all=False, publish_source=True, chainLinkOracleAddress='0x40193c8518BB267228Fc409a613bDbD8eC5a97b3', chainLinkJobId='ca98366cc7314957b8c012c72f05aeeb', chainLinkPaymentAmount=10**17)")
+    print('from scripts.deploy_product import stakeholders_accounts_from_mnemonic')
+    print("(customer, customer2, product, oracle, riskpool, riskpoolWallet, investor, usdc, instance, instanceService, instanceOperator, bundleId, riskId, processId, d) = all_in_1(stakeholders_accounts=stakeholders_accounts_from_mnemonic(), deploy_all=False, publish_source=True, chainLinkOracleAddress='0x40193c8518BB267228Fc409a613bDbD8eC5a97b3', chainLinkJobId='ca98366cc7314957b8c012c72f05aeeb', chainLinkPaymentAmount=10**17)")
     print('verify_deploy(d, usdc, product)')
     print('instanceService.getBundle(bundleId).dict()')
     print('instanceService.getPolicy(processId).dict()')
@@ -121,11 +105,11 @@ def help_testnet_clfunctions():
     print('* You need to deploy the Chainlink Functions-based Oracle/Client contract by running the task `functions-deploy-rainsurance` (use the ORACLE_PROVIDER account for that)')
     print('* Second you must create a new Chainlink Functions subscription and add that contract as consumer by running the task `functions-sub-create`')
     print('* Then you must register a new Chainlink Upkeep by visiting this website: https://automation.chain.link/mumbai/new (choose Custom Logic / enter the contract address / 700000 as gas limit / fund the contract with LINK)')
-    print('* Finally you must add the address of the contract in the `git_instance_adress.txt` file in this projects root directory as `oracle`')
+    print('* Finally you must add the address of the contract in the `gif_instance_address.txt` file in this projects root directory as `oracle`')
     print('* Now you are all set on the Oracle side! You can run the following instructions inside the brownie console to deploy the GIF Product and RiskPool:')
     print('from scripts.deploy_rain import all_in_1, verify_deploy')
-    print('from scripts.deploy_product import stakeholders_accounts')
-    print("(customer, customer2, product, oracle, riskpool, riskpoolWallet, investor, usdc, instance, instanceService, instanceOperator, bundleId, riskId, processId, d) = all_in_1(stakeholders_accounts=stakeholders_accounts(), deploy_all=False, publish_source=True, chainLinkOracleAddress='0xeA6721aC65BCeD841B8ec3fc5fEdeA6141a0aDE4')")
+    print('from scripts.deploy_product import stakeholders_accounts_from_mnemonic')
+    print("(customer, customer2, product, oracle, riskpool, riskpoolWallet, investor, usdc, instance, instanceService, instanceOperator, bundleId, riskId, processId, d) = all_in_1(stakeholders_accounts=stakeholders_accounts_from_mnemonic(), deploy_all=False, publish_source=True, chainLinkOracleAddress='0xeA6721aC65BCeD841B8ec3fc5fEdeA6141a0aDE4')")
     print('verify_deploy(d, usdc, product)')
     print('instanceService.getBundle(bundleId).dict()')
     print('instanceService.getPolicy(processId).dict()')
