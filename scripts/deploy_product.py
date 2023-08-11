@@ -189,6 +189,7 @@ def stakeholders_accounts_from_mnemonic():
         INSTANCE_OPERATOR: a[0],
         INSTANCE_WALLET: a[1],
         ORACLE_PROVIDER: a[2],
+        #ORACLE_PROVIDER: accounts.add(os.getenv("ORACLE_PROVIDER_PK")),
         CHAINLINK_NODE_OPERATOR: a[3],
         RISKPOOL_KEEPER: a[4],
         RISKPOOL_WALLET: a[5],

@@ -59,15 +59,6 @@ contract RainProduct is
         uint256 createdAt;
         uint256 updatedAt;
     }
-    // struct Process {
-    //     bytes32 riskId;
-    //     bytes32 processId;
-    //     uint256 startDate;
-    //     uint256 endDate;
-    //     bytes32 placeId;
-    //     uint256 precHist;
-    //     uint256 sumInsured;
-    // }
 
     uint256 private _oracleId;
     IERC20 private _token;
@@ -81,7 +72,6 @@ contract RainProduct is
     mapping(bytes32 /* riskId */ => EnumerableSet.Bytes32Set /* processIds */) private _policies;
     bytes32 [] private _applications; // useful for debugging, might need to get rid of this
     mapping(address /* policyHolder */ => bytes32 [] /* processIds */) private _processIdsForHolder; // hold list of applications/policies Ids for address
-    // mapping(address /* policyHolder */ => Process [] /* processIds */) private _processesForHolder; // hold list of applications/policies for address
 
     // events
     event LogRainApplicationCreated(bytes32 processId, address policyHolder, address wallet, uint256 premiumAmount, uint256 sumInsuredAmount);
@@ -292,31 +282,11 @@ contract RainProduct is
 
         // remember for which policy holder this application is
         _processIdsForHolder[policyHolder].push(processId);
-        // _processesForHolder[policyHolder].push(
-        //     Process(
-        //         risk.id, 
-        //         processId, 
-        //         risk.startDate, 
-        //         risk.endDate, 
-        //         risk.placeId, 
-        //         risk.precHist,
-        //         sumInsured)
-        // );
 
         // in case the protected wallet is different from policy holder:
         // also remember for which wallet address the appplication is
         if(wallet != policyHolder) {
             _processIdsForHolder[wallet].push(processId);
-            // _processesForHolder[wallet].push(
-            //     Process(
-            //         risk.id, 
-            //         processId, 
-            //         risk.startDate, 
-            //         risk.endDate, 
-            //         risk.placeId, 
-            //         risk.precHist,
-            //         sumInsured)
-            // );
         }
 
         emit LogRainApplicationCreated(
@@ -415,7 +385,7 @@ contract RainProduct is
         onlyRole(INSURER_ROLE)
         returns(uint256 requestId)
     {
-        Risk storage risk = _risks[_getRiskId(processId)];
+        Risk storage risk = _risks[getRiskIdForProcess(processId)];
         require(risk.createdAt > 0, "ERROR:RAIN-010:RISK_UNDEFINED");
         require(risk.responseAt == 0, "ERROR:RAIN-011:ORACLE_ALREADY_RESPONDED");
 
@@ -453,7 +423,7 @@ contract RainProduct is
         external
         onlyRole(INSURER_ROLE)
     {
-        Risk storage risk = _risks[_getRiskId(processId)];
+        Risk storage risk = _risks[getRiskIdForProcess(processId)];
         require(risk.createdAt > 0, "ERROR:RAIN-012:RISK_UNDEFINED");
         require(risk.requestTriggered, "ERROR:RAIN-013:ORACLE_REQUEST_NOT_FOUND");
         require(risk.responseAt == 0, "ERROR:RAIN-014:EXISTING_CALLBACK");
@@ -478,7 +448,7 @@ contract RainProduct is
 
         (uint256 precActual, uint256 precDaysActual) = abi.decode(responseData, (uint256, uint256));
 
-        bytes32 riskId = _getRiskId(processId);
+        bytes32 riskId = getRiskIdForProcess(processId);
 
         Risk storage risk = _risks[riskId];
         require(risk.createdAt > 0, "ERROR:RAIN-021:RISK_UNDEFINED");
@@ -545,7 +515,7 @@ contract RainProduct is
         onlyRole(INSURER_ROLE)
     {
         IPolicy.Application memory application = _getApplication(policyId);
-        bytes32 riskId = _getRiskId(policyId);
+        bytes32 riskId = getRiskIdForProcess(policyId);
         Risk memory risk = _risks[riskId];
 
         require(risk.id == riskId, "ERROR:RAIN-031:RISK_ID_INVALID");
@@ -698,6 +668,15 @@ contract RainProduct is
     function getRiskId(uint256 idx) external view returns(bytes32 riskId) { return _riskIds[idx]; }
     function getRisk(bytes32 riskId) external view returns(Risk memory risk) { return _risks[riskId]; }
 
+  function getRiskIdForProcess(bytes32 processId)
+        public
+        view 
+        returns(bytes32 riskId) 
+    {
+        bytes memory applicationData = _getApplication(processId).data;
+        (,,,,,,riskId) = _riskpool.decodeApplicationParameterFromData(applicationData);
+    }
+
     function applications() external view returns(uint256 applicationCount) {
         return _applications.length;
     }
@@ -719,14 +698,6 @@ contract RainProduct is
     {
         return _processIdsForHolder[policyHolder];
     }
-
-    // function processForHolder(address policyHolder, uint256 processIdx)
-    //     external 
-    //     view
-    //     returns(Process memory)
-    // {
-    //     return _processesForHolder[policyHolder][processIdx];
-    // }
 
     function getProcessId(address policyHolder, uint256 idx)
         external 
@@ -750,11 +721,6 @@ contract RainProduct is
         require(trigger <= PERCENTAGE_MULTIPLIER, "ERROR:RAIN-041:RISK_TRIGGER_TOO_LARGE");
         require(exit > trigger, "ERROR:RAIN-042:RISK_EXIT_NOT_LARGER_THAN_TRIGGER");
         //require(precHist >= 0, "ERROR:RAIN-043:RISK_APH_ZERO_INVALID");
-    }
-
-    function _getRiskId(bytes32 processId) private view returns(bytes32 riskId) {
-        bytes memory applicationData = _getApplication(processId).data;
-        (,,,,,,riskId) = _riskpool.decodeApplicationParameterFromData(applicationData);
     }
 
 }

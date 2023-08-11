@@ -43,7 +43,7 @@ contract RainRiskpool is
 
     event LogBundleExpired(uint256 bundleId, uint256 createdAt, uint256 lifetime);
     event LogBundleMismatch(uint256 bundleId, uint256 bundleIdRequested);
-    event LogBundleMatchesApplication(uint256 bundleId, uint256 error);
+    event LogBundleMatchesApplication(uint256 bundleId, uint256 errorId);
 
     bytes32 public constant EMPTY_STRING_HASH = keccak256(abi.encodePacked(""));
     bytes32 public constant PLACE_WILDCARD_HASH = keccak256(abi.encodePacked("*"));
@@ -464,13 +464,13 @@ contract RainRiskpool is
         filter = bundle.filter;
     }
 
-    // sorts bundles on increasing annual percentage return
+    // default implementation adds new bundle at the end of the active list
     function isHigherPriorityBundle(uint256 firstBundleId, uint256 secondBundleId) 
         public override 
         view 
         returns (bool firstBundleIsHigherPriority) 
     {
-        return true;
+        firstBundleIsHigherPriority = true;
     }
 
     function bundleMatchesApplication(

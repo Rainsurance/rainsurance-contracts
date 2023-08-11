@@ -173,7 +173,7 @@ def test_application_with_wildcard_bundle(
     place2 = '10002.paris'
     placeWilcard = '*'
 
-    #bundle place = saopaulo
+    #bundle place = 10001.saopaulo
     bundleId = create_bundle(
         instance, 
         instanceOperator, 
@@ -204,7 +204,7 @@ def test_application_with_wildcard_bundle(
     tx = history[-1]
     
     assert 'LogBundleMatchesApplication' in tx.events
-    assert tx.events['LogBundleMatchesApplication']['error'] == 6
+    assert tx.events['LogBundleMatchesApplication']['errorId'] == 6
 
     bundleIdWildcard = create_bundle(
         instance, 
@@ -230,8 +230,26 @@ def test_application_with_wildcard_bundle(
     tx = history[-1]
     
     assert 'LogBundleMatchesApplication' in tx.events
-    assert tx.events['LogBundleMatchesApplication']['error'] == 0
+    assert tx.events['LogBundleMatchesApplication']['errorId'] == 0
 
+    #risk place = 10001.saopaulo
+    riskId2 = create_risk(product, insurer, place=place)
+
+    apply_for_policy_with_bundle(
+        instance,
+        instanceOperator,
+        customer,
+        product,
+        bundleId,
+        riskId2,
+        None,
+        protectedBalance,
+        maxPremium)
+    
+    tx = history[-1]
+    
+    assert 'LogBundleMatchesApplication' in tx.events
+    assert tx.events['LogBundleMatchesApplication']['errorId'] == 0
 
 def test_application_with_expired_bundle(
     instance,

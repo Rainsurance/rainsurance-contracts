@@ -445,11 +445,9 @@ def test_process_policies_mix_batch_individual_processing(
     assert product.getProcessId(customer, 3) == policyId[3]
     assert product.getProcessId(customer, 4) == policyId[4]
 
-    # assert product.processForHolder(customer, 0)['processId'] == policyId[0]
-    # assert product.processForHolder(customer, 1)['processId'] == policyId[1]
-    # assert product.processForHolder(customer, 2)['processId'] == policyId[2]
-    # assert product.processForHolder(customer, 3)['processId'] == policyId[3]
-    # assert product.processForHolder(customer, 4)['processId'] == policyId[4]
+    assert product.getRiskIdForProcess(policyId[0]) == riskId[0]
+    assert product.getRiskIdForProcess(policyId[1]) == riskId[0]
+    assert product.getRiskIdForProcess(policyId[4]) == riskId[0]
 
     # try to process without insurer role
     with brownie.reverts('AccessControl: account 0x5aeda56215b167893e80b4fe645ba6d5bab767de is missing role 0xf098b7742e998f92a3c749f35e64ef555edcecec4b78a00c532a4f385915955b'):
